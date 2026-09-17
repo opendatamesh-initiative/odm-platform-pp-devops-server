@@ -5,16 +5,14 @@
 		 					 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<!-- Change the groupId and artifactId to your own values -->
 	<groupId>org.opendatamesh</groupId>
-	<artifactId>odm-platform-service-template</artifactId>
-	<version>0.0.1</version>
+	<artifactId>odm-platform-pp-devops-server</artifactId>
+	<version>2.0.0</version>
 	<packaging>jar</packaging>
 
-	<!-- Change the name, description, url, and scm to your own values -->
-	<name>ODM Platform Service Template</name>
-	<description>This is a template for creating a new odm platform service repository.</description>
-	<url>https://github.com/opendatamesh-initiative/odm-platform-service-template</url>
+	<name>ODM Platform DevOps Server</name>
+	<description>Open Data Mesh Platform's DevOps service server</description>
+	<url>https://github.com/opendatamesh-initiative/odm-platform-pp-devops-server</url>
 	
 	<parent>
         <groupId>org.springframework.boot</groupId>
@@ -31,9 +29,9 @@
     </licenses>
 
 	<scm>
-		<connection>scm:git:git@github.com:opendatamesh-initiative/odm-platform-service-template</connection>
-		<developerConnection>scm:git:git@github.com:opendatamesh-initiative/odm-platform-service-template</developerConnection>
-		<url>scm:git:git@github.com:opendatamesh-initiative/odm-platform-service-template</url>
+		<connection>scm:git:git@github.com:opendatamesh-initiative/odm-platform-pp-devops-server</connection>
+		<developerConnection>scm:git:git@github.com:opendatamesh-initiative/odm-platform-pp-devops-server</developerConnection>
+		<url>scm:git:git@github.com:opendatamesh-initiative/odm-platform-pp-devops-server</url>
 	</scm>
 
 	<properties>

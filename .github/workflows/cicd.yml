@@ -1,11 +1,11 @@
-name: odm-platform-service-template CI/CD
+name: odm-platform-pp-devops-server CI/CD
 
 on:
   release:
     types: [created]
 
 env:
-  IMAGE_NAME: odm-platform-service-template
+  IMAGE_NAME: odm-platform-devops
 
 jobs:
   verify-version:

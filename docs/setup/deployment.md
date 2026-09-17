@@ -8,20 +8,20 @@ Related: [Configuration](configuration.md) · [Development](development.md)
 
 ```bash
 mvn clean package
-docker build -t odm-platform-service-template .
+docker build -t odm-platform-pp-devops-server .
 ```
 
-The `Dockerfile` copies `target/odm-platform-service-template-*.jar`. After renaming `artifactId`, update that glob.
+The `Dockerfile` copies `target/odm-platform-pp-devops-server-*.jar`.
 
 ## Run container
 
 ```bash
 docker run -p 8080:8080 \
-  -e DB_JDBC_URL=jdbc:postgresql://host.docker.internal:5432/odm_service_template \
+  -e DB_JDBC_URL=jdbc:postgresql://host.docker.internal:5432/odm_devops \
   -e DB_USERNAME=your_username \
   -e DB_PASSWORD=your_password \
   -e PROFILES_ACTIVE=docker \
-  odm-platform-service-template
+  odm-platform-pp-devops-server
 ```
 
 The image defaults to the **`docker`** Spring profile (`PROFILES_ACTIVE=docker`), which binds the datasource from:
@@ -33,6 +33,8 @@ The image defaults to the **`docker`** Spring profile (`PROFILES_ACTIVE=docker`)
 | `DB_PASSWORD` | `spring.datasource.password` |
 
 Optional: `JAVA_OPTS` for JVM flags; `SPRING_PROPS` for nested Spring JSON overrides (same pattern as other product-plane services).
+
+Release images are published as `opendatamesh/odm-platform-devops`.
 
 ## Checklist
 

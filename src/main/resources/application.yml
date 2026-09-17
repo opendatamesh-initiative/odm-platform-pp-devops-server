@@ -2,10 +2,10 @@ server:
   port: 8080
   baseUrl: http://localhost:8080
 
-service-template:
+devops:
   observer:
-    name: service-template
-    displayName: Service template
+    name: devops2.0
+    displayName: DevOps service 2.0
 
 odm:
   product-plane:
@@ -17,7 +17,7 @@ spring:
   profiles:
     active: test
   application:
-    name: odm-platform-service-template
+    name: odm-platform-pp-devops-server
   banner:
     charset: UTF-8
     mode: console
@@ -28,7 +28,7 @@ spring:
   jpa:
     properties:
       hibernate:
-        default_schema: odm_service_template
+        default_schema: odm_devops
         ddl-auto: validate
 
 info:
@@ -36,7 +36,7 @@ info:
   name: @project.name@
 
 application:
-  title: ODM Platform Service Template
+  title: ODM Platform DevOps Server
 
 logging:
   pattern:

@@ -1,4 +1,4 @@
-name: odm-platform-service-template CI
+name: odm-platform-pp-devops-server CI
 on:
   push:
     branches:

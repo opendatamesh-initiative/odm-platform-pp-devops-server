@@ -1,10 +1,10 @@
-# Service documentation
+# DevOps Server documentation
 
-Index of guides for this **ODM Platform** service. After forking the template, replace the title and ports with the real service name.
+Index of guides for the **ODM Platform DevOps Server**.
 
 <p>
-  <a href="http://localhost:8087/swagger-ui.html">Swagger UI</a> ·
-  <a href="http://localhost:8087/v3/api-docs">OpenAPI</a>
+  <a href="http://localhost:8002/swagger-ui.html">Swagger UI</a> ·
+  <a href="http://localhost:8002/v3/api-docs">OpenAPI</a>
   <em>(when the service is running locally with the <code>dev</code> profile)</em>
 </p>
 
@@ -12,7 +12,7 @@ Index of guides for this **ODM Platform** service. After forking the template, r
 
 ## Service
 
-Add domain guides under [`service/`](service/) as the product grows. The template ships a sample CRUD API at `/api/v2/pp/service-template/examples` — replace it with your aggregates.
+Add domain guides under [`service/`](service/) as the product grows. REST lives under `/api/v2/pp/devops/`.
 
 ## Setup
 

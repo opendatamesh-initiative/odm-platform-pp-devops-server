@@ -6,7 +6,7 @@ spring:
     properties:
       hibernate:
         show_sql: false
-        default_schema: odm_service_template_test
+        default_schema: odm_devops_test
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
 odm:
