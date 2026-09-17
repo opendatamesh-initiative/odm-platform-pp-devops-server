@@ -1,0 +1,16 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  jpa:
+    properties:
+      hibernate:
+        show_sql: false
+        default_schema: odm_service_template_test
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+odm:
+  product-plane:
+    notification-service:
+      address: http://localhost:8001
+      active: false

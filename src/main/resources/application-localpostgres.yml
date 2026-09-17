@@ -1,0 +1,10 @@
+server:
+  port: 8087
+  baseUrl: http://localhost:8087
+
+spring:
+  profile: local
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres?useSSL=false
+    username: postgres
+    password: my-secret-password
