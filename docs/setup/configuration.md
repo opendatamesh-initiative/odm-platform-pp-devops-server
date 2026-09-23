@@ -41,7 +41,7 @@ devops:
 Environment examples (relaxed binding):  
 `ODM_PRODUCT_PLANE_NOTIFICATION_SERVICE_ADDRESS`, `ODM_PRODUCT_PLANE_NOTIFICATION_SERVICE_ACTIVE`.
 
-This service does **not** subscribe to event types at startup or expose an observer REST endpoint. Add those when you follow the Registry pattern (`NotificationClientEventSubscriber` + handlers).
+This service does **not** subscribe to event types at startup or expose an observer REST endpoint. Add those when a later story needs inbound notifications.
 
 ## Server port
 

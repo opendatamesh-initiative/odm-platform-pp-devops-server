@@ -10,6 +10,10 @@ Index of guides for the **ODM Platform DevOps Server**.
 
 ---
 
+## Architecture
+
+Component map (anemic CRUD and use cases): [`ARCHITECTURE.md`](../ARCHITECTURE.md).
+
 ## Service
 
 Add domain guides under [`service/`](service/) as the product grows. REST lives under `/api/v2/pp/devops/`.

@@ -3,7 +3,7 @@
 > The product-plane DevOps service for the [Open Data Mesh Platform](https://dpds.opendatamesh.org/) —
 > orchestrate data-product activities and tasks across the lifecycle.
 
-This repository is the **v2 rewrite** of the DevOps server (Java 21 / Spring Boot 3.5). It currently ships shared infrastructure (generic CRUD, use-case ports, notification client, Flyway, CI). Domain APIs will be added in follow-up work.
+This repository is the **v2** DevOps server (Java 21 / Spring Boot 3.5). It ships shared infrastructure (generic CRUD, use-case ports, notification client, Flyway, CI). Anemic CRUD for the Activity root aggregate is the first domain increment. Flyway `V1` defines the Activity aggregate tables (`activities`, nested tasks, logs, and results).
 
 <p align="center">
   <a href="https://github.com/opendatamesh-initiative/odm-platform-pp-devops-server/actions/workflows/ci.yml"><img src="https://github.com/opendatamesh-initiative/odm-platform-pp-devops-server/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -76,6 +76,7 @@ All guides live under [`docs/`](docs/README.md). Agent onboarding: [`AGENTS.md`]
 
 | Guide | Description |
 |:------|:------------|
+| [Architecture](ARCHITECTURE.md) | Anemic CRUD, use cases, and package map |
 | [Development](docs/setup/development.md) | Build, run, profiles, testing |
 | [Deployment](docs/setup/deployment.md) | Containers and external dependencies |
 | [Configuration](docs/setup/configuration.md) | DB, notification, observer identity |
