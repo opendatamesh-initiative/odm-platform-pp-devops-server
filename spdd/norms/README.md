@@ -1,8 +1,6 @@
-# SPDD Norms — odm-platform-service-template
+# SPDD Norms — odm-platform-pp-devops-server
 
-This folder holds **project-specific engineering norms** for this service. They describe *how* to implement features in this codebase, not *what* to build (that lives in `spdd/prompt/` and `spdd/analysis/`).
-
-After forking the template, rename this heading and the “service template” wording below to match the new repository.
+This folder holds **project-specific engineering norms** for the DevOps server. They describe *how* to implement features in this codebase, not *what* to build (that lives in `spdd/prompt/` and `spdd/analysis/`).
 
 ## SPDD artifacts
 

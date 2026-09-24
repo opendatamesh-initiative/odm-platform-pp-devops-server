@@ -15,9 +15,9 @@ Related: [Configuration](configuration.md) · [Deployment](deployment.md)
 
 | Profile | Role |
 |:--------|:-----|
-| **`dev`** | H2 in-memory DB; server port **8087** (`application-dev.yml`) |
+| **`dev`** | H2 in-memory DB; server port **8002** (`application-dev.yml`) |
 | **`docker`** | PostgreSQL via env vars (`application-docker.yml`) |
-| **`localpostgres`** | Local PostgreSQL example; port **8087** |
+| **`localpostgres`** | Local PostgreSQL example; port **8002** |
 | **`test`** | Integration tests (`src/test/resources/application-test.yml`) |
 
 Root `application.yml` may default `spring.profiles.active` to **`test`**. For a normal local run, override with `dev` or `localpostgres`.
@@ -38,17 +38,17 @@ mvn spring-boot:run -Dspring-boot.run.profiles=localpostgres
 
 ```bash
 mvn clean package
-java -Dspring.profiles.active=dev -jar target/odm-platform-service-template-*.jar
+java -Dspring.profiles.active=dev -jar target/odm-platform-pp-devops-server-*.jar
 ```
 
 ## API docs (local)
 
 | | Endpoint |
 |:--|:---------|
-| Swagger UI | http://localhost:8087/swagger-ui.html |
-| OpenAPI | http://localhost:8087/v3/api-docs |
+| Swagger UI | http://localhost:8002/swagger-ui.html |
+| OpenAPI | http://localhost:8002/v3/api-docs |
 
-Product-plane prefix: **`/api/v2/pp/service-template/`**. After renaming the service, update this prefix in controllers and `RoutesV2`.
+Product-plane prefix: **`/api/v2/pp/devops/`**.
 
 ## Testing
 
@@ -61,7 +61,7 @@ Docker must be available for Testcontainers when integration tests run.
 ## Architecture (stack)
 
 - **Spring Boot 3.5.x**
-- **PostgreSQL** + Flyway (`src/main/resources/db/migration/postgresql/`), schema `odm_service_template`
+- **PostgreSQL** + Flyway (`src/main/resources/db/migration/postgresql/`), schema `odm_devops`
 - **H2** for `dev`
 - **Spring Data JPA**, **SpringDoc OpenAPI**, **MapStruct**
 - Optional **Notification** client (`NotificationClientConfig`)

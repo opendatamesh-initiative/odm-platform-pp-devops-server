@@ -35,7 +35,7 @@ Pick the **shallowest** layer that fits: if the API does not need a separate `R`
 
 Optional **hooks** (empty defaults; override when needed):
 
-- **Read:** `afterFindOne(T, ID)`
+- **Read:** `afterFindOne(T, ID)` — leave empty unless a concrete read fails without it. Do not use it to initialize or detach the graph.
 - **Create:** `beforeCreation(T)`, `afterCreation(T, T)`, `afterCreationCommit(T)`
 - **Update:** `beforeOverwrite(T)`, `afterOverWrite(T, T)`, `afterOverwriteCommit(T)`
 - **Delete:** `beforeDelete(ID)`, `afterDelete(ID)`, `afterDeleteCommit(T)` (used with `deleteReturning`)
@@ -117,3 +117,7 @@ A typical filtered, mapped service:
 4. **Throw** exceptions that your global handler maps to HTTP status codes consistently.
 
 5. If an aggregate **must not** support generic `findAll(Pageable)`, override those methods and throw an explicit “not supported” (or equivalent) with a clear message.
+
+6. **OpenAPI for anemic CRUD** documents GET by id and search only. Mark create, update, and delete with `@Hidden`. The methods stay callable; they are omitted from the public document.
+
+7. **Do not put `NOT NULL` in Flyway**, including on foreign keys. Same as Registry and Blueprint: `varchar(36) references parent(uuid) on delete cascade`, with no `not null`. Required fields and defaults belong in `validate`. Do not add `@Column(nullable = false)` on business columns. A `@JoinColumn(nullable = false)` on the association is fine; it is not a migration constraint.
