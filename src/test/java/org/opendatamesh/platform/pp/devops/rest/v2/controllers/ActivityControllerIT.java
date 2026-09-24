@@ -302,7 +302,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      *   When the client DELETEs /api/v2/pp/devops/activities/{uuid}
      *   Then the response is 204
      *   And a following GET of that uuid is 404
-     *   And no rows remain in activities_tasks, activities_task_logs, or activities_task_results for that activity's former children
+     *   And no rows remain in activities_tasks, activities_tasks_logs, or activities_tasks_results for that activity's former children
      */
     @Test
     public void whenDeleteActivityThenCascade() {
@@ -337,8 +337,8 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
         assertThat(countRows("activities_tasks", "uuid", taskUuid)).isZero();
-        assertThat(countRows("activities_task_logs", "uuid", logUuid)).isZero();
-        assertThat(countRows("activities_task_results", "uuid", resultUuid)).isZero();
+        assertThat(countRows("activities_tasks_logs", "uuid", logUuid)).isZero();
+        assertThat(countRows("activities_tasks_results", "uuid", resultUuid)).isZero();
         assertThat(countRows("activities_tasks", "activity_uuid", created.getUuid())).isZero();
     }
 

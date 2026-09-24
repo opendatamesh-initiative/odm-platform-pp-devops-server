@@ -13,7 +13,6 @@ import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivityRe
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivitySearchOptions;
 import org.opendatamesh.platform.pp.devops.utils.repositories.PagingAndSortingAndSpecificationExecutorRepository;
 import org.opendatamesh.platform.pp.devops.utils.repositories.SpecsUtils;
-import org.opendatamesh.platform.pp.devops.utils.services.EntityInitAndDetachService;
 import org.opendatamesh.platform.pp.devops.utils.services.GenericMappedAndFilteredCrudServiceImpl;
 import org.opendatamesh.platform.pp.devops.utils.services.TransactionHandler;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,9 +39,6 @@ public class ActivityServiceImpl
 
     @Autowired
     private ActivityMapper activityMapper;
-
-    @Autowired
-    private EntityInitAndDetachService entityInitAndDetachService;
 
     @Autowired
     private TransactionHandler transactionHandler;
@@ -289,11 +285,6 @@ public class ActivityServiceImpl
         persisted.getTasks().clear();
         persisted.getTasks().addAll(reconciledTasks);
         incoming.setTasks(persisted.getTasks());
-    }
-
-    @Override
-    protected void afterFindOne(Activity activity, String identifier) {
-        entityInitAndDetachService.initializeEntityAndDetach(activity);
     }
 
     private static Map<String, Task> indexTasks(List<Task> tasks) {

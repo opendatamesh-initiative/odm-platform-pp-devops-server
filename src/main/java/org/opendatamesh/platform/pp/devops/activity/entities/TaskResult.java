@@ -14,7 +14,7 @@ import jakarta.persistence.Table;
 import java.sql.Timestamp;
 
 @Entity
-@Table(name = "activities_task_results")
+@Table(name = "activities_tasks_results")
 public class TaskResult extends VersionedEntity {
 
     @Id
@@ -22,7 +22,7 @@ public class TaskResult extends VersionedEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String uuid;
 
-    @Column(name = "content", nullable = false, columnDefinition = "text")
+    @Column(name = "content", columnDefinition = "text")
     private String content;
 
     @Column(name = "generated_at")

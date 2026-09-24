@@ -137,10 +137,10 @@ classDiagram
 
 **Physical model** (Flyway; Hibernate schema `odm_devops`; **replace** `src/main/resources/db/migration/postgresql/V1__init_schema.sql` with this first schema). Plain `CREATE TABLE IF NOT EXISTS`:
 
-- `activities`: `uuid` PK `varchar(36)`, `data_product_version_uuid` `varchar(36)` not null, `data_product_fqn` `varchar(255)` null, `data_product_version_tag` `varchar(255)` null, `name` `varchar(255)` not null, `sort_order` `integer` null, `status` `varchar(255)` not null, `started_at` timestamp null, `finished_at` timestamp null, `created_at` timestamp, `updated_at` timestamp.
-- `activities_tasks`: `uuid` PK `varchar(36)`, `activity_uuid` `varchar(36)` not null references `activities(uuid)` **on delete cascade**, `name` `varchar(255)` null, `description` text null, `sort_order` `integer` null, `status` `varchar(255)` not null, `provider_run_id` `varchar(255)` null, `started_at` timestamp null, `finished_at` timestamp null, `created_at`, `updated_at`.
-- `activities_task_logs`: `uuid` PK `varchar(36)`, `task_uuid` `varchar(36)` not null references `activities_tasks(uuid)` **on delete cascade**, `content` text not null, `generated_at` timestamp null, `created_at`, `updated_at`.
-- `activities_task_results`: `uuid` PK `varchar(36)`, `task_uuid` `varchar(36)` not null references `activities_tasks(uuid)` **on delete cascade**, `content` text not null, `generated_at` timestamp null, `created_at`, `updated_at`.
+- `activities`: `uuid` PK `varchar(36)`, `data_product_version_uuid` `varchar(36)`, `data_product_fqn` `varchar(255)`, `data_product_version_tag` `varchar(255)`, `name` `varchar(255)`, `sort_order` `integer`, `status` `varchar(255)`, `started_at` timestamp, `finished_at` timestamp, `created_at` timestamp, `updated_at` timestamp. No business `NOT NULL`. Required fields are checked in `validate`.
+- `activities_tasks`: `uuid` PK `varchar(36)`, `activity_uuid` `varchar(36)` references `activities(uuid)` **on delete cascade**, `name` `varchar(255)`, `description` text, `sort_order` `integer`, `status` `varchar(255)`, `provider_run_id` `varchar(255)`, `started_at` timestamp, `finished_at` timestamp, `created_at`, `updated_at`.
+- `activities_tasks_logs`: `uuid` PK `varchar(36)`, `task_uuid` `varchar(36)` references `activities_tasks(uuid)` **on delete cascade**, `content` text, `generated_at` timestamp, `created_at`, `updated_at`.
+- `activities_tasks_results`: `uuid` PK `varchar(36)`, `task_uuid` `varchar(36)` references `activities_tasks(uuid)` **on delete cascade**, `content` text, `generated_at` timestamp, `created_at`, `updated_at`.
 - Indexes: `activities (data_product_version_uuid, name, status)`; `activities_tasks (activity_uuid, status)`; `activities_tasks (provider_run_id)` (plain btree, nullable).
 
 Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task root. Do **not** add a unique constraint on data-product version + name, on task `name` + `provider_run_id`, or on `sort_order`. Do **not** add a foreign key to Registry. `status` is unconstrained `varchar(255)` in the database; the Java enum is the closed set.
@@ -149,14 +149,14 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
 
 1. Aggregate and HTTP:
    - One root, Activity, in schema `odm_devops`. Task, TaskLog, and TaskResult are cascaded nested entities (`CascadeType.ALL`, `orphanRemoval = true`, `FetchType.LAZY`). Zero children is valid.
-   - One collection, `/api/v2/pp/devops/activities`, in the same shape as a product-plane root controller (`DataProductController`): POST 201, GET `/{uuid}` 200 with the nested graph, GET page 200 without the nested graph, PUT `/{uuid}` 200 overwrite of the whole aggregate, DELETE `/{uuid}` 204.
+   - One collection, `/api/v2/pp/devops/activities`, in the same shape as a product-plane root controller (`DataProductController`): POST 201, GET `/{uuid}` 200 with the nested graph, GET page 200 without the nested graph, PUT `/{uuid}` 200 overwrite of the whole aggregate, DELETE `/{uuid}` 204. OpenAPI documents GET and search only. POST, PUT, and DELETE carry `@Hidden`.
    - The activity body is the task graph. POST and PUT persist that graph as received. A task, log, or result present in the body is created or updated. One absent from the body is deleted. A null list is an empty list. There is no task controller and no `/tasks` route.
    - No use case, no Registry client, no notification publish, no status transition, no rollup of task status onto the activity.
 
 2. Technical implementation:
    - `ActivityServiceImpl` extends `GenericMappedAndFilteredCrudServiceImpl<ActivitySearchOptions, ActivityRes, Activity, String>` (`spdd/norms/GENERIC-CRUD-GUIDELINES.md`). MapStruct maps resources. Repositories expose static `Specs` combined with `SpecsUtils.combineWithAnd`.
    - Identity is server-generated (`GenerationType.UUID`) unless a PUT body names a task, log, or result that already belongs to that activity. Path uuid wins for the activity. `beforeCreation` clears every client uuid so create cannot merge an existing row. `beforeOverwrite` keeps a nested uuid only when that row already belongs to the activity being written, then applies the incoming collections onto the managed activity so orphan removal deletes what the body omitted.
-   - Search overrides `findAllResourcesFiltered` and maps with a graph-free mapper method so the task graph is not loaded. `afterFindOne` initializes tasks, logs, and results for GET-by-id via `EntityInitAndDetachService`.
+   - Search overrides `findAllResourcesFiltered` and maps with a graph-free mapper method so the task graph is not loaded. Do not override `afterFindOne`. GET-by-id uses the mapped read path.
    - Errors use `BadRequestException` (400) and `NotFoundException` (404) through the existing `ResponseExceptionHandler`. Invalid enum JSON and invalid sort (`PropertyReferenceException`) are already 400. Do not add a new handler.
    - Replace placeholder Flyway `V1` with the physical model above. Do not add `V2` for this schema.
 
@@ -181,7 +181,7 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
 ### Dependencies
 
 1. `ActivityController` injects `ActivityService` and calls only `*Resource` / `delete` methods.
-2. `ActivityServiceImpl` depends on `ActivitiesRepository`, `ActivityMapper`, and `EntityInitAndDetachService`.
+2. `ActivityServiceImpl` depends on `ActivitiesRepository`, `ActivityMapper`, and `TransactionHandler`.
 3. `ActivityMapper` uses `TaskMapper`. `TaskMapper` maps `TaskLog` and `TaskResult`.
 4. Nested entities have no repository and no service. The activity repository cascade persists them.
 5. `getSpecFromFilters` uses `ActivitiesRepository.Specs` and `SpecsUtils`.
@@ -211,12 +211,12 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
 1. Package: `org.opendatamesh.platform.pp.devops.activity.entities`. `@Entity`, `@Table(name = "activities")`, extends `VersionedEntity`. No Lombok.
 2. Attributes:
    - `uuid`: `String` — `@Id`, `@GeneratedValue(strategy = GenerationType.UUID)`, `@Column(name = "uuid", length = 36)`.
-   - `dataProductVersionUuid`: `String` — `data_product_version_uuid`, nullable false, length 36.
+   - `dataProductVersionUuid`: `String` — `data_product_version_uuid`, length 36. No `nullable = false`.
    - `dataProductFqn`: `String` — `data_product_fqn`, length 255.
    - `dataProductVersionTag`: `String` — `data_product_version_tag`, length 255.
-   - `name`: `String` — nullable false, length 255.
+   - `name`: `String` — length 255. No `nullable = false`.
    - `sortOrder`: `Integer` — `sort_order`.
-   - `status`: `ExecutionStatus` — `@Enumerated(EnumType.STRING)`, `status` `varchar(255)`, nullable false.
+   - `status`: `ExecutionStatus` — `@Enumerated(EnumType.STRING)`, `status` `varchar(255)`. No `nullable = false`.
    - `startedAt`, `finishedAt`: `Timestamp`.
    - `tasks`: `List<Task>` — `@OneToMany(mappedBy = "activity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)`, initialized to a new `ArrayList`.
 3. Accessors for every field. No lifecycle methods beyond `VersionedEntity`.
@@ -228,13 +228,13 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
    - `uuid`: `String` — same id mapping as Activity.
    - `activityUuid`: `String` — `@Column(name = "activity_uuid", insertable = false, updatable = false, length = 36)`.
    - `activity`: `Activity` — `@ManyToOne(optional = false)`, `@JoinColumn(name = "activity_uuid", nullable = false)`.
-   - `name`: `String` length 255. `description`: `String`, `columnDefinition = "text"`. `sortOrder`: `Integer`. `status`: `ExecutionStatus` as on Activity. `providerRunId`: `String` length 255. `startedAt`, `finishedAt`: `Timestamp`.
+   - `name`: `String` length 255. `description`: `String`, `columnDefinition = "text"`. `sortOrder`: `Integer`. `status`: `ExecutionStatus` as on Activity, no `nullable = false`. `providerRunId`: `String` length 255. `startedAt`, `finishedAt`: `Timestamp`.
    - `logs`: `List<TaskLog>`, `results`: `List<TaskResult>` — `@OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)`, each a new `ArrayList`.
 
 ### Create entity — `TaskLog` and `TaskResult`
 
-1. Tables `activities_task_logs` and `activities_task_results`. Both extend `VersionedEntity`.
-2. Attributes on each: `uuid` as above; `content` text, nullable false; `generatedAt` timestamp, column `generated_at`; `task` `@ManyToOne(optional = false)` `@JoinColumn(name = "task_uuid", nullable = false)`.
+1. Tables `activities_tasks_logs` and `activities_tasks_results`. Both extend `VersionedEntity`.
+2. Attributes on each: `uuid` as above; `content` text, no `nullable = false`; `generatedAt` timestamp, column `generated_at`; `task` `@ManyToOne(optional = false)` `@JoinColumn(name = "task_uuid", nullable = false)`.
 3. No `taskUuid` Java field. The parent is the association.
 
 ### Create repository — `ActivitiesRepository`
@@ -272,7 +272,7 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
 
 1. Interface in `activity/services/core`: extends `GenericMappedAndFilteredCrudService<ActivitySearchOptions, ActivityRes, Activity, String>`. No extra methods.
 2. Class: `@Service`, extends `GenericMappedAndFilteredCrudServiceImpl<ActivitySearchOptions, ActivityRes, Activity, String>`.
-3. Dependencies: `ActivitiesRepository`, `ActivityMapper`, `EntityInitAndDetachService`. Constructor or field injection consistent with other services in this codebase (`@Autowired` fields).
+3. Dependencies: `ActivitiesRepository`, `ActivityMapper`, `TransactionHandler`. Constructor or field injection consistent with other services in this codebase (`@Autowired` fields).
 4. `getRepository()` returns the activities repository.
 5. `toRes` / `toEntity` delegate to the mapper. `toRes` is the graph mapping, used by create, get, and overwrite responses.
 6. `validate(Activity)`:
@@ -304,7 +304,7 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
     - `clear()` the managed task list and add only the reconciled tasks, so tasks omitted from the body are orphan-removed. Do the same for logs and results on each kept task.
     - Set `incoming.tasks` to the managed list so the following `save` flushes that collection. Leave incoming scalars (name, status, DPV fields, sort order, execution timestamps) on `incoming` so merge updates them.
     - Do not copy the previous task list back onto the activity unchanged. Do not refuse the write because a status is non-terminal.
-11. `afterFindOne`: `entityInitAndDetachService.initializeEntityAndDetach(activity)` so GET-by-id returns tasks, logs, and results.
+11. Do not override `afterFindOne`. GET-by-id uses the mapped read inside `TransactionHandler`.
 12. `findAllResourcesFiltered`: override and map with `ActivityMapper.toResWithoutTasks` inside `TransactionHandler.runInTransaction`. Do not initialize the graph. `getSpecFromFilters` AND-combines the five specs; a null filter object yields an empty conjunction.
 13. `getSpecFromFilters` skips blank strings and a null status.
 14. Transaction boundaries stay in the generic base (`TransactionTemplate` for writes, `TransactionHandler` for reads). Do not add `@Transactional` on the service.
@@ -315,18 +315,19 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
 2. `@RestController`, `@RequestMapping(value = "/api/v2/pp/devops/activities", produces = MediaType.APPLICATION_JSON_VALUE)`, `@Tag(name = "Activities", description = "Endpoints for managing activities")`.
 3. `@Autowired ActivityService`.
 4. Methods, mirroring the product-plane root controller:
-   - `POST` `createActivity(ActivityRes)` → `createResource`. 201.
+   - `POST` `createActivity(ActivityRes)` → `createResource`. 201. `@Hidden`.
    - `GET /{uuid}` `getActivity(String uuid)` → `findOneResource`. 200. Returns the nested graph.
    - `GET` `searchActivities(ActivitySearchOptions, @PageableDefault(page = 0, size = 20, sort = "sortOrder", direction = Sort.Direction.ASC) Pageable)` → `findAllResourcesFiltered`. 200. Does not return tasks. Document sort properties: `uuid`, `dataProductVersionUuid`, `dataProductFqn`, `dataProductVersionTag`, `name`, `sortOrder`, `status`, `startedAt`, `finishedAt`, `createdAt`, `updatedAt`.
-   - `PUT /{uuid}` `updateActivity(String uuid, ActivityRes)` → `overwriteResource`. 200. The body is the desired aggregate, including tasks.
-   - `DELETE /{uuid}` `deleteActivity(String uuid)` → `delete`. 204.
-5. OpenAPI `@Operation`, `@ApiResponses`, and `@Parameter` on each method, same style as `DataProductController`. Document 400, 404, and 500 where they apply. PUT and POST describe that tasks omitted from the body are removed.
+   - `PUT /{uuid}` `updateActivity(String uuid, ActivityRes)` → `overwriteResource`. 200. The body is the desired aggregate, including tasks. `@Hidden`.
+   - `DELETE /{uuid}` `deleteActivity(String uuid)` → `delete`. 204. `@Hidden`.
+5. OpenAPI `@Operation`, `@ApiResponses`, and `@Parameter` on each method, same style as `DataProductController`. Document 400, 404, and 500 where they apply. PUT and POST describe that tasks omitted from the body are removed. `@Hidden` on POST, PUT, and DELETE so the public document shows GET and search only.
 6. Do not add a task controller, a nested task mapping, or a log/result controller.
 
 ### Document the aggregate — `docs/service/README.md`
 
-1. State that the domain is the Activity root aggregate: a named activity of a data product version (`dataProductVersionUuid`, plus `dataProductFqn` and `dataProductVersionTag`), owning tasks and their logs and results.
-2. State that anemic CRUD is this increment: one `/api/v2/pp/devops/activities` collection; tasks change only through the activity POST and PUT; process, execute, polling, and notifications are later.
+1. State that the domain is the Activity aggregate: a named activity of a data product version, owning tasks and their logs and results.
+2. State that anemic CRUD is this increment, and that process, execute, polling, and notifications are later.
+3. Do not name fields, URL paths, or HTTP methods. `docs/` stays free of implementation detail.
 
 ### High-level tests (Gherkin)
 
@@ -382,7 +383,7 @@ Feature: Delete an activity
     When the client DELETEs /api/v2/pp/devops/activities/{uuid}
     Then the response is 204
     And a following GET of that uuid is 404
-    And no rows remain in activities_tasks, activities_task_logs, or activities_task_results for that activity's former children
+    And no rows remain in activities_tasks, activities_tasks_logs, or activities_tasks_results for that activity's former children
 
 Feature: Validation
   Scenario: Missing required fields are rejected

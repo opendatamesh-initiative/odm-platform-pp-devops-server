@@ -15,9 +15,9 @@ public class NotificationClientConfig {
     private static final Logger logger = LoggerFactory.getLogger(NotificationClientConfig.class);
     @Value("${server.baseUrl}")
     private String baseUrl;
-    @Value("${devops.observer.name:devops2.0}")
+    @Value("${devops.observer.name:devops}")
     private String observerName;
-    @Value("${devops.observer.displayName:DevOps service 2.0}")
+    @Value("${devops.observer.displayName:DevOps}")
     private String observerDisplayName;
     @Value("${odm.product-plane.notification-service.address}")
     private String notificationServiceBaseUrl;

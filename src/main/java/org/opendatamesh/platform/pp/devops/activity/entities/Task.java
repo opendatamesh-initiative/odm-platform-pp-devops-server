@@ -45,7 +45,7 @@ public class Task extends VersionedEntity {
     @Column(name = "sort_order")
     private Integer sortOrder;
 
-    @Column(name = "status", nullable = false, length = 255)
+    @Column(name = "status", length = 255)
     @Enumerated(EnumType.STRING)
     private ExecutionStatus status;
 

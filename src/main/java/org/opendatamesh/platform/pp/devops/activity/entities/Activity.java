@@ -27,7 +27,7 @@ public class Activity extends VersionedEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String uuid;
 
-    @Column(name = "data_product_version_uuid", nullable = false, length = 36)
+    @Column(name = "data_product_version_uuid", length = 36)
     private String dataProductVersionUuid;
 
     @Column(name = "data_product_fqn", length = 255)
@@ -36,13 +36,13 @@ public class Activity extends VersionedEntity {
     @Column(name = "data_product_version_tag", length = 255)
     private String dataProductVersionTag;
 
-    @Column(name = "name", nullable = false, length = 255)
+    @Column(name = "name", length = 255)
     private String name;
 
     @Column(name = "sort_order")
     private Integer sortOrder;
 
-    @Column(name = "status", nullable = false, length = 255)
+    @Column(name = "status", length = 255)
     @Enumerated(EnumType.STRING)
     private ExecutionStatus status;
 

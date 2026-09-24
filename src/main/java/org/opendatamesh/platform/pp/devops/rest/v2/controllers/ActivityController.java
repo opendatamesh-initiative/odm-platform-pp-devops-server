@@ -1,5 +1,6 @@
 package org.opendatamesh.platform.pp.devops.rest.v2.controllers;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -35,6 +36,7 @@ public class ActivityController {
     @Autowired
     private ActivityService activityService;
 
+    @Hidden
     @Operation(
             summary = "Create a new activity",
             description = "Creates a new activity and persists its nested task graph as received. "
@@ -96,6 +98,7 @@ public class ActivityController {
         return activityService.findAllResourcesFiltered(pageable, searchOptions);
     }
 
+    @Hidden
     @Operation(
             summary = "Update activity",
             description = "Overwrites an existing activity by its UUID. The body is the desired aggregate, including tasks. "
@@ -119,6 +122,7 @@ public class ActivityController {
         return activityService.overwriteResource(uuid, activity);
     }
 
+    @Hidden
     @Operation(summary = "Delete activity", description = "Deletes an activity by its UUID and cascades nested tasks, logs, and results")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "204", description = "Activity deleted successfully"),

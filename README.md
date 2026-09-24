@@ -76,7 +76,6 @@ All guides live under [`docs/`](docs/README.md). Agent onboarding: [`AGENTS.md`]
 
 | Guide | Description |
 |:------|:------------|
-| [Architecture](ARCHITECTURE.md) | Anemic CRUD, use cases, and package map |
 | [Development](docs/setup/development.md) | Build, run, profiles, testing |
 | [Deployment](docs/setup/deployment.md) | Containers and external dependencies |
 | [Configuration](docs/setup/configuration.md) | DB, notification, observer identity |

@@ -74,17 +74,17 @@ Physical model for Flyway schema `odm_devops`. Activity is the only root. Task, 
 ```mermaid
 erDiagram
   ACTIVITIES ||--o{ ACTIVITIES_TASKS : "activity_uuid ON DELETE CASCADE"
-  ACTIVITIES_TASKS ||--o{ ACTIVITIES_TASK_LOGS : "task_uuid ON DELETE CASCADE"
-  ACTIVITIES_TASKS ||--o{ ACTIVITIES_TASK_RESULTS : "task_uuid ON DELETE CASCADE"
+  ACTIVITIES_TASKS ||--o{ ACTIVITIES_TASKS_LOGS : "task_uuid ON DELETE CASCADE"
+  ACTIVITIES_TASKS ||--o{ ACTIVITIES_TASKS_RESULTS : "task_uuid ON DELETE CASCADE"
 
   ACTIVITIES {
     varchar_36 uuid PK
-    varchar_36 data_product_version_uuid "NOT NULL, external Registry id"
-    varchar_255 data_product_fqn "NULL, natural key"
-    varchar_255 data_product_version_tag "NULL, natural key"
-    varchar_255 name "NOT NULL"
-    integer sort_order "NULL"
-    varchar_255 status "NOT NULL"
+    varchar_36 data_product_version_uuid "CRUD required, external Registry id"
+    varchar_255 data_product_fqn "natural key"
+    varchar_255 data_product_version_tag "natural key"
+    varchar_255 name "CRUD required"
+    integer sort_order
+    varchar_255 status "CRUD default PENDING"
     timestamp started_at "NULL"
     timestamp finished_at "NULL"
     timestamp created_at
@@ -93,11 +93,11 @@ erDiagram
 
   ACTIVITIES_TASKS {
     varchar_36 uuid PK
-    varchar_36 activity_uuid FK "NOT NULL"
+    varchar_36 activity_uuid FK
     varchar_255 name "NULL"
     text description "NULL"
     integer sort_order "NULL"
-    varchar_255 status "NOT NULL"
+    varchar_255 status "CRUD default PENDING"
     varchar_255 provider_run_id "NULL"
     timestamp started_at "NULL"
     timestamp finished_at "NULL"
@@ -105,19 +105,19 @@ erDiagram
     timestamp updated_at
   }
 
-  ACTIVITIES_TASK_LOGS {
+  ACTIVITIES_TASKS_LOGS {
     varchar_36 uuid PK
-    varchar_36 task_uuid FK "NOT NULL"
-    text content "NOT NULL"
+    varchar_36 task_uuid FK
+    text content "CRUD required"
     timestamp generated_at "NULL, source time"
     timestamp created_at
     timestamp updated_at
   }
 
-  ACTIVITIES_TASK_RESULTS {
+  ACTIVITIES_TASKS_RESULTS {
     varchar_36 uuid PK
-    varchar_36 task_uuid FK "NOT NULL"
-    text content "NOT NULL"
+    varchar_36 task_uuid FK
+    text content "CRUD required"
     timestamp generated_at "NULL, source time"
     timestamp created_at
     timestamp updated_at

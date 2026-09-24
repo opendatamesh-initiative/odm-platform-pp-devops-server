@@ -27,8 +27,8 @@ odm:
 
 devops:
   observer:
-    name: devops2.0
-    displayName: DevOps service 2.0
+    name: devops
+    displayName: DevOps
 ```
 
 | Property | Description |
