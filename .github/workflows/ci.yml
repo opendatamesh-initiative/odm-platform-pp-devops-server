@@ -31,13 +31,11 @@ jobs:
                 <username>${{ github.actor }}</username>
                 <password>${{ secrets.GITHUB_TOKEN }}</password>
               </server>
-              <!-- Uncomment if this service depends on git-utils from GitHub Packages
               <server>
                 <id>odm-git-utils-repo</id>
                 <username>${{ github.actor }}</username>
                 <password>${{ secrets.GITHUB_TOKEN }}</password>
               </server>
-              -->
             </servers>
           </settings>" > ~/.m2/settings.xml
       - name: Execute tests with Maven

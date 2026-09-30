@@ -8,7 +8,14 @@ import org.opendatamesh.platform.pp.devops.utils.repositories.SpecsUtils;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
+import java.util.Collection;
+import java.util.List;
+
 public interface ActivitiesRepository extends PagingAndSortingAndSpecificationExecutorRepository<Activity, String> {
+
+    List<Activity> findByDataProductVersionUuidAndNameAndStatusIn(String dataProductVersionUuid, String name, Collection<ExecutionStatus> statuses);
+
+    List<Activity> findByDataProductVersionUuid(String dataProductVersionUuid);
 
     class Specs extends SpecsUtils {
 

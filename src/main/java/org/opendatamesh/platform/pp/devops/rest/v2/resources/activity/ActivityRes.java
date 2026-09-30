@@ -25,7 +25,7 @@ public class ActivityRes extends VersionedRes {
     @Schema(description = "Activity name")
     private String name;
 
-    @Schema(description = "Descriptor definition order")
+    @Schema(description = "The activity's position among the data product version's activities.")
     private Integer sortOrder;
 
     @Schema(description = "Stored execution status. Defaults to PENDING when omitted.")

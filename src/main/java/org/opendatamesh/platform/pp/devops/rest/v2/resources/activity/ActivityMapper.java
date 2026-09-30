@@ -15,4 +15,7 @@ public interface ActivityMapper {
 
     @Mapping(target = "tasks", ignore = true)
     ActivityRes toResWithoutTasks(Activity entity);
+
+    @Mapping(target = "tasks", qualifiedByName = "withoutLogsAndResults")
+    ActivityRes toEventRes(Activity entity);
 }
