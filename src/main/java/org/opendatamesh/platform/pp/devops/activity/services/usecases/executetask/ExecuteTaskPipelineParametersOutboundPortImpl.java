@@ -4,13 +4,16 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
+import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.activity.entities.TaskResult;
 import org.opendatamesh.platform.pp.devops.activity.services.core.ActivityService;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivitySearchOptions;
 import org.opendatamesh.platform.pp.devops.utils.parameters.PipelineParameterPlaceholders;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Pageable;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -38,8 +41,10 @@ class ExecuteTaskPipelineParametersOutboundPortImpl implements ExecuteTaskPipeli
      * <p>
      * Every activity of the same data product version is loaded, in any status, including the
      * one running now. One activity is kept per name: the latest {@code createdAt}. Inside it,
-     * one task is kept per name, again the latest {@code createdAt}. An equal timestamp leaves
-     * the row already chosen.
+     * one succeeded task is kept per name, the latest {@code createdAt}. A task that is not
+     * {@code SUCCEEDED} is not a candidate, so a newer canceled or failed task does not hide an
+     * older succeeded one. An equal timestamp leaves the row already chosen. Stored result rows
+     * are not deleted.
      * <p>
      * That task's result rows are parsed as JSON objects. Blank, non-JSON, and non-object rows
      * are skipped. The rest are ordered by {@code generatedAt}, with a missing timestamp last,
@@ -58,7 +63,9 @@ class ExecuteTaskPipelineParametersOutboundPortImpl implements ExecuteTaskPipeli
     }
 
     private Map<String, String> resolveInsideTransaction(Task task) {
-        List<Activity> activities = activityService.findAllOfDataProductVersion(task.getActivity().getDataProductVersionUuid());
+        ActivitySearchOptions options = new ActivitySearchOptions();
+        options.setDataProductVersionUuid(task.getActivity().getDataProductVersionUuid());
+        List<Activity> activities = activityService.findAllFiltered(Pageable.unpaged(), options).getContent();
         initializeResults(activities);
         Map<String, Map<String, JsonNode>> context = resultsByActivityAndTask(activities);
         return PipelineParameterPlaceholders.resolveAll(
@@ -106,7 +113,7 @@ class ExecuteTaskPipelineParametersOutboundPortImpl implements ExecuteTaskPipeli
         Map<String, Task> latestTaskByName = new LinkedHashMap<>();
         if (activity.getTasks() != null) {
             for (Task task : activity.getTasks()) {
-                if (task.getName() == null) {
+                if (task.getName() == null || task.getStatus() != ExecutionStatus.SUCCEEDED) {
                     continue;
                 }
                 Task current = latestTaskByName.get(task.getName());

@@ -16,8 +16,9 @@ odm:
       active: false
   utility-plane:
     executor-polling:
-      initial-delay: 500ms
-      max-delay: 60s
+      interval: 30s
+    executor-secrets:
+      ttl: 1h
     executor-services: {}
 
 spring:

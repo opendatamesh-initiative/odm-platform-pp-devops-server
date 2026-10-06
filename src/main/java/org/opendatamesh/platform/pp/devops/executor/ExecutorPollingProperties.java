@@ -1,5 +1,6 @@
 package org.opendatamesh.platform.pp.devops.executor;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -9,39 +10,38 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "odm.utility-plane.executor-polling")
 public class ExecutorPollingProperties {
 
-    private Duration initialDelay = Duration.ofMillis(500);
-    private Duration maxDelay = Duration.ofSeconds(60);
+    static final String PROPERTY = "odm.utility-plane.executor-polling.interval";
+    private static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(30);
+    private static final Duration DEFAULT_SECRETS_TTL = Duration.ofHours(1);
 
-    public Duration getInitialDelay() {
-        return initialDelay;
-    }
+    private Duration interval = DEFAULT_INTERVAL;
 
-    public void setInitialDelay(Duration initialDelay) {
-        this.initialDelay = initialDelay;
-    }
-
-    public Duration getMaxDelay() {
-        return maxDelay;
-    }
-
-    public void setMaxDelay(Duration maxDelay) {
-        this.maxDelay = maxDelay;
-    }
-
-    public Duration delayForAttempt(int attempt) {
-        int doublings = Math.max(0, attempt - 1);
-        Duration delay = initialDelay == null ? Duration.ZERO : initialDelay;
-        Duration ceiling = maxDelay == null ? delay : maxDelay;
-        for (int i = 0; i < doublings; i++) {
-            if (delay.compareTo(ceiling) >= 0) {
-                return ceiling;
-            }
-            try {
-                delay = delay.multipliedBy(2);
-            } catch (ArithmeticException overflow) {
-                return ceiling;
-            }
+    @PostConstruct
+    public void validate() {
+        if (interval == null || interval.isZero() || interval.isNegative()) {
+            throw new IllegalStateException(PROPERTY + " must be a positive duration");
         }
-        return delay.compareTo(ceiling) > 0 ? ceiling : delay;
+    }
+
+    public Duration getInterval() {
+        return interval;
+    }
+
+    public void setInterval(Duration interval) {
+        this.interval = interval;
+    }
+
+    public int maxStatusReads(Duration secretsTtl) {
+        Duration ttl = secretsTtl == null ? DEFAULT_SECRETS_TTL : secretsTtl;
+        Duration every = interval == null ? DEFAULT_INTERVAL : interval;
+        long intervalMillis = every.toMillis();
+        if (intervalMillis <= 0) {
+            return 1;
+        }
+        long reads = ttl.toMillis() / intervalMillis;
+        if (reads < 1) {
+            return 1;
+        }
+        return reads > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) reads;
     }
 }

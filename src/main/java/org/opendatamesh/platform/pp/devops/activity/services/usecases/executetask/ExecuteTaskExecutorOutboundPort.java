@@ -15,7 +15,9 @@ interface ExecuteTaskExecutorOutboundPort {
 
     ExecutorRunStatus readRunStatus(Task task);
 
-    void waitBeforeNextStatusRead(int attempt);
+    void waitBeforeNextStatusRead();
+
+    int maxStatusReads();
 
     Optional<TaskLog> readRunLog(Task task);
 }

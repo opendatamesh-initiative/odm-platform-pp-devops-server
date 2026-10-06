@@ -15,7 +15,7 @@ Index of guides for the **ODM Platform DevOps Server**.
 | Guide | Description |
 |:------|:------------|
 | [Service](service/README.md) | What an activity is, and how full-control execution proceeds |
-| [Policy service](service/policy-service.md) | Auto-approval while Policy is inactive |
+| [Policy service](service/policy-service.md) | Auto-approval while Policy is inactive, and a refusal while it is active |
 | [Events](service/events.md) | Messages that move an execution along |
 
 Engineering conventions live in [`spdd/norms/`](../spdd/norms/README.md).

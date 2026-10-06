@@ -13,6 +13,7 @@ import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorPollingProperties;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorRunStatus;
+import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsProperties;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskMapper;
 import org.slf4j.Logger;
@@ -31,15 +32,18 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
     private final ExecutorServicesProperties executorServicesProperties;
     private final ExecutorClientFactory executorClientFactory;
     private final ExecutorPollingProperties pollingProperties;
+    private final ExecutorSecretsProperties secretsProperties;
     private final TaskMapper taskMapper;
 
     ExecuteTaskExecutorOutboundPortImpl(ExecutorServicesProperties executorServicesProperties,
                                         ExecutorClientFactory executorClientFactory,
                                         ExecutorPollingProperties pollingProperties,
+                                        ExecutorSecretsProperties secretsProperties,
                                         TaskMapper taskMapper) {
         this.executorServicesProperties = executorServicesProperties;
         this.executorClientFactory = executorClientFactory;
         this.pollingProperties = pollingProperties;
+        this.secretsProperties = secretsProperties;
         this.taskMapper = taskMapper;
     }
 
@@ -75,9 +79,18 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
     }
 
     @Override
-    public void waitBeforeNextStatusRead(int attempt) {
+    public void waitBeforeNextStatusRead() {
+        sleep(pollingProperties.getInterval().toMillis());
+    }
+
+    @Override
+    public int maxStatusReads() {
+        return pollingProperties.maxStatusReads(secretsProperties.getTtl());
+    }
+
+    private static void sleep(long millis) {
         try {
-            Thread.sleep(pollingProperties.delayForAttempt(attempt).toMillis());
+            Thread.sleep(millis);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new InternalException("Interrupted while waiting to read executor status");

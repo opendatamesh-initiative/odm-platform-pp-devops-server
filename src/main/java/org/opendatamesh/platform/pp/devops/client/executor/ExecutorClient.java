@@ -9,6 +9,8 @@ public interface ExecutorClient {
 
     ExecutorTaskStartResultRes startTask(ExecutorTaskStartCommandRes command);
 
+    void cancelTask(String providerRunId);
+
     ExecutorTaskStatusRes getTaskStatus(String providerRunId);
 
     ExecutorTaskLogsRes getTaskLogs(String providerRunId);

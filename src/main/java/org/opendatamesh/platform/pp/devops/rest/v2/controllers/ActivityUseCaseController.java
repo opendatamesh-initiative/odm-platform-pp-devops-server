@@ -8,6 +8,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.opendatamesh.platform.pp.devops.activity.services.ActivityUseCasesService;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.usecases.cancel.ActivityCancelCommandRes;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.usecases.cancel.ActivityCancelResultRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.usecases.execute.ActivityExecuteCommandRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.usecases.execute.ActivityExecuteResultRes;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,5 +55,26 @@ public class ActivityUseCaseController {
             @RequestHeader HttpHeaders headers
     ) {
         return useCasesService.executeActivity(executeCommand, headers);
+    }
+
+    @Operation(
+            summary = "Cancel an activity and return it when it has finished",
+            description = "Tasks that have not started are canceled; a task on the executor is asked to stop; "
+                    + "the call returns when the activity is succeeded, failed, or canceled."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Activity succeeded, failed, or canceled",
+                    content = @Content(schema = @Schema(implementation = ActivityCancelResultRes.class))),
+            @ApiResponse(responseCode = "400", description = "The activity has already terminated"),
+            @ApiResponse(responseCode = "409", description = "The activity could not be canceled because of a concurrent update"),
+            @ApiResponse(responseCode = "500", description = "The activity could not be canceled")
+    })
+    @PostMapping("/cancel")
+    @ResponseStatus(HttpStatus.OK)
+    public ActivityCancelResultRes cancelActivity(
+            @Parameter(description = "Activity cancel command", required = true)
+            @RequestBody ActivityCancelCommandRes cancelCommand
+    ) {
+        return useCasesService.cancelActivity(cancelCommand);
     }
 }

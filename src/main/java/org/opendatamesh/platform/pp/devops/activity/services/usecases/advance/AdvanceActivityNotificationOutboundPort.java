@@ -9,4 +9,6 @@ interface AdvanceActivityNotificationOutboundPort {
     void emitActivitySucceeded(Activity activity);
 
     void emitActivityFailed(Activity activity);
+
+    void emitActivityCanceled(Activity activity);
 }

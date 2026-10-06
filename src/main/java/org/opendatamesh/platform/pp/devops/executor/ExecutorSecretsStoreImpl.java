@@ -4,7 +4,6 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -12,9 +11,13 @@ import java.util.Map;
 @Component
 public class ExecutorSecretsStoreImpl implements ExecutorSecretsStore {
 
-    private final Cache<String, Map<String, String>> cache = Caffeine.newBuilder()
-            .expireAfterWrite(Duration.ofHours(1))
-            .build();
+    private final Cache<String, Map<String, String>> cache;
+
+    public ExecutorSecretsStoreImpl(ExecutorSecretsProperties secretsProperties) {
+        this.cache = Caffeine.newBuilder()
+                .expireAfterWrite(secretsProperties.getTtl())
+                .build();
+    }
 
     @Override
     public void store(String executorName, String activityUuid, Map<String, String> secretHeaders) {

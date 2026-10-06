@@ -79,7 +79,7 @@ public class ActivityServiceImpl
             addIfPresent(specs, ActivitiesRepository.Specs.hasDataProductFqn(filters.getDataProductFqn()));
             addIfPresent(specs, ActivitiesRepository.Specs.hasDataProductVersionTag(filters.getDataProductVersionTag()));
             addIfPresent(specs, ActivitiesRepository.Specs.hasName(filters.getName()));
-            addIfPresent(specs, ActivitiesRepository.Specs.hasStatus(filters.getStatus()));
+            addIfPresent(specs, ActivitiesRepository.Specs.hasStatusIn(filters.getStatuses()));
         }
         return SpecsUtils.combineWithAnd(specs);
     }
@@ -315,16 +315,6 @@ public class ActivityServiceImpl
         target.setExecutorName(source.getExecutorName());
         target.setExecutorParameters(source.getExecutorParameters());
         target.setPipelineParameters(source.getPipelineParameters());
-    }
-
-    @Override
-    public List<Activity> findActivitiesInStatus(String dataProductVersionUuid, String name, Set<ExecutionStatus> statuses) {
-        return activitiesRepository.findByDataProductVersionUuidAndNameAndStatusIn(dataProductVersionUuid, name, statuses);
-    }
-
-    @Override
-    public List<Activity> findAllOfDataProductVersion(String dataProductVersionUuid) {
-        return activitiesRepository.findByDataProductVersionUuid(dataProductVersionUuid);
     }
 
     private static void replaceLogs(Task managedTask, List<TaskLog> incomingLogs) {

@@ -57,14 +57,13 @@ odm:
         execution-mode: full-control
 ```
 
-DevOps polls a running task until it ends. The wait starts at half a second and doubles up to one minute. Shorten both limits in tests.
+DevOps polls a running task until it ends. The status poll is one interval, 30 seconds by default, with no back-off. The poll stops after the secrets lifetime divided by that interval.
 
 ```yaml
 odm:
   utility-plane:
     executor-polling:
-      initial-delay: 500ms
-      max-delay: 60s
+      interval: 30s
 ```
 
 Each running task holds one background thread for the whole run. The pool is bounded:
@@ -81,7 +80,14 @@ spring:
 
 ## Secrets and parameters
 
-On execute, a secret for one executor arrives as a request header named `x-odm-<executorName>-executor-secret-<secretType>`. DevOps keeps it in memory for at most one hour, sends it only to that executor for that activity as `x-odm-<secretType>`, and drops it when the activity ends. Secrets are never stored, logged, returned, or put in events.
+On execute, a secret for one executor arrives as a request header named `x-odm-<executorName>-executor-secret-<secretType>`. The secrets lifetime is configuration, one hour by default. DevOps keeps the secret in memory for that lifetime, sends it only to that executor for that activity as `x-odm-<secretType>`, and drops it when the activity ends. Secrets are never stored, logged, returned, or put in events.
+
+```yaml
+odm:
+  utility-plane:
+    executor-secrets:
+      ttl: 1h
+```
 
 Executor parameters and pipeline parameters are not secret. They are stored, returned, and included in events. Pipeline parameter values may contain placeholders; those are filled in only when a task is about to start.
 

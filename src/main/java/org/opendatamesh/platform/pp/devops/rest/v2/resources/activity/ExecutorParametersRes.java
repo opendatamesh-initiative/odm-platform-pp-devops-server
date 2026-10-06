@@ -8,8 +8,8 @@ public class ExecutorParametersRes {
     @Schema(description = "Repository key. Null means the main repository.")
     private String repositoryKey;
 
-    @Schema(description = "Coordinates of the repository that holds the pipeline")
-    private RepositoryCoordinatesRes repository;
+    @Schema(description = "Data product repository that holds the pipeline")
+    private DataProductRepoRes dataProductRepo;
 
     @Schema(description = "Git ref to check out")
     private GitRefRes ref;
@@ -28,12 +28,12 @@ public class ExecutorParametersRes {
         this.repositoryKey = repositoryKey;
     }
 
-    public RepositoryCoordinatesRes getRepository() {
-        return repository;
+    public DataProductRepoRes getDataProductRepo() {
+        return dataProductRepo;
     }
 
-    public void setRepository(RepositoryCoordinatesRes repository) {
-        this.repository = repository;
+    public void setDataProductRepo(DataProductRepoRes dataProductRepo) {
+        this.dataProductRepo = dataProductRepo;
     }
 
     public GitRefRes getRef() {

@@ -7,9 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
+import org.opendatamesh.platform.pp.devops.activity.entities.DataProductRepo;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutorParameters;
 import org.opendatamesh.platform.pp.devops.activity.entities.GitRef;
-import org.opendatamesh.platform.pp.devops.activity.entities.RepositoryCoordinates;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.activity.entities.TaskLog;
 import org.opendatamesh.platform.pp.devops.activity.entities.TaskResult;
@@ -44,9 +44,9 @@ public interface TaskMapper {
 
     ExecutorParametersRes toRes(ExecutorParameters entity);
 
-    RepositoryCoordinates toEntity(RepositoryCoordinatesRes res);
+    DataProductRepo toEntity(DataProductRepoRes res);
 
-    RepositoryCoordinatesRes toRes(RepositoryCoordinates entity);
+    DataProductRepoRes toRes(DataProductRepo entity);
 
     GitRef toEntity(GitRefRes res);
 

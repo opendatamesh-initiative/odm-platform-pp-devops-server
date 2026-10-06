@@ -16,8 +16,9 @@ odm:
       active: false
   utility-plane:
     executor-polling:
-      initial-delay: 1ms
-      max-delay: 5ms
+      interval: 1ms
+    executor-secrets:
+      ttl: 1h
     executor-services:
       starter:
         address: http://localhost:9080

@@ -3,7 +3,7 @@ package org.opendatamesh.platform.pp.devops.activity.entities;
 public class ExecutorParameters {
 
     private String repositoryKey;
-    private RepositoryCoordinates repository;
+    private DataProductRepo dataProductRepo;
     private GitRef ref;
     private String pipelineIdentifier;
 
@@ -18,12 +18,12 @@ public class ExecutorParameters {
         this.repositoryKey = repositoryKey;
     }
 
-    public RepositoryCoordinates getRepository() {
-        return repository;
+    public DataProductRepo getDataProductRepo() {
+        return dataProductRepo;
     }
 
-    public void setRepository(RepositoryCoordinates repository) {
-        this.repository = repository;
+    public void setDataProductRepo(DataProductRepo dataProductRepo) {
+        this.dataProductRepo = dataProductRepo;
     }
 
     public GitRef getRef() {

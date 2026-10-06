@@ -80,35 +80,60 @@ class AdvanceActivity implements UseCase {
     private AdvanceWork advanceRunningActivity() {
         return transactionalPort.doInTransactionWithResults(ignored -> {
             Activity activity = persistencePort.findActivity(command.activityUuid());
-            requireRunning(activity);
             List<Task> tasks = tasksInSortOrder(activity);
-            if (anyTaskFailed(tasks)) {
-                cancelPendingTasks(tasks);
-                activity.setStatus(ExecutionStatus.FAILED);
-                activity.setFinishedAt(now());
-                persistencePort.save(activity);
-                notificationPort.emitActivityFailed(activity);
-                return new AdvanceWork(Outcome.CLOSED, activity);
+            if (isTerminal(activity.getStatus())) {
+                return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
             }
-            if (allTasksSucceeded(tasks)) {
-                activity.setStatus(ExecutionStatus.SUCCEEDED);
-                activity.setFinishedAt(now());
-                persistencePort.save(activity);
-                notificationPort.emitActivitySucceeded(activity);
+            if (anyTaskFailed(tasks)) {
+                closeFailed(activity, tasks);
                 return new AdvanceWork(Outcome.CLOSED, activity);
             }
             if (anyTaskRunning(tasks)) {
                 return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
             }
-            notificationPort.emitTaskExecutionRequested(activity, firstPendingTask(activity, tasks));
-            return new AdvanceWork(Outcome.TASK_REQUESTED, activity);
+            if (anyTaskCanceled(tasks)) {
+                closeCanceled(activity, tasks);
+                return new AdvanceWork(Outcome.CLOSED, activity);
+            }
+            if (allTasksSucceeded(tasks)) {
+                closeSucceeded(activity);
+                return new AdvanceWork(Outcome.CLOSED, activity);
+            }
+            if (activity.getStatus() == ExecutionStatus.RUNNING && anyTaskPending(tasks)) {
+                notificationPort.emitTaskExecutionRequested(activity, firstPendingTask(activity, tasks));
+                return new AdvanceWork(Outcome.TASK_REQUESTED, activity);
+            }
+            return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
         }, null);
     }
 
-    private void requireRunning(Activity activity) {
-        if (activity.getStatus() != ExecutionStatus.RUNNING) {
-            throw new BadRequestException("Activity " + activity.getUuid() + " can be advanced only if RUNNING");
-        }
+    private void closeFailed(Activity activity, List<Task> tasks) {
+        cancelPendingTasks(tasks);
+        activity.setStatus(ExecutionStatus.FAILED);
+        activity.setFinishedAt(now());
+        persistencePort.save(activity);
+        notificationPort.emitActivityFailed(activity);
+    }
+
+    private void closeCanceled(Activity activity, List<Task> tasks) {
+        cancelPendingTasks(tasks);
+        activity.setStatus(ExecutionStatus.CANCELED);
+        activity.setFinishedAt(now());
+        persistencePort.save(activity);
+        notificationPort.emitActivityCanceled(activity);
+    }
+
+    private void closeSucceeded(Activity activity) {
+        activity.setStatus(ExecutionStatus.SUCCEEDED);
+        activity.setFinishedAt(now());
+        persistencePort.save(activity);
+        notificationPort.emitActivitySucceeded(activity);
+    }
+
+    private static boolean isTerminal(ExecutionStatus status) {
+        return status == ExecutionStatus.SUCCEEDED
+                || status == ExecutionStatus.FAILED
+                || status == ExecutionStatus.CANCELED;
     }
 
     private List<Task> tasksInSortOrder(Activity activity) {
@@ -130,6 +155,14 @@ class AdvanceActivity implements UseCase {
 
     private boolean anyTaskRunning(List<Task> tasks) {
         return tasks.stream().anyMatch(task -> task.getStatus() == ExecutionStatus.RUNNING);
+    }
+
+    private boolean anyTaskCanceled(List<Task> tasks) {
+        return tasks.stream().anyMatch(task -> task.getStatus() == ExecutionStatus.CANCELED);
+    }
+
+    private boolean anyTaskPending(List<Task> tasks) {
+        return tasks.stream().anyMatch(task -> task.getStatus() == ExecutionStatus.PENDING);
     }
 
     private void cancelPendingTasks(List<Task> tasks) {

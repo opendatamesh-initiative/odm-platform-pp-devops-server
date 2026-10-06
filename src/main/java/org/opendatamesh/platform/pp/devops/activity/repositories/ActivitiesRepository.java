@@ -6,16 +6,12 @@ import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.utils.repositories.PagingAndSortingAndSpecificationExecutorRepository;
 import org.opendatamesh.platform.pp.devops.utils.repositories.SpecsUtils;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
-import java.util.List;
 
 public interface ActivitiesRepository extends PagingAndSortingAndSpecificationExecutorRepository<Activity, String> {
-
-    List<Activity> findByDataProductVersionUuidAndNameAndStatusIn(String dataProductVersionUuid, String name, Collection<ExecutionStatus> statuses);
-
-    List<Activity> findByDataProductVersionUuid(String dataProductVersionUuid);
 
     class Specs extends SpecsUtils {
 
@@ -47,11 +43,11 @@ public interface ActivitiesRepository extends PagingAndSortingAndSpecificationEx
             return (root, query, cb) -> cb.equal(root.get(Activity_.name), name);
         }
 
-        public static Specification<Activity> hasStatus(ExecutionStatus status) {
-            if (status == null) {
+        public static Specification<Activity> hasStatusIn(Collection<ExecutionStatus> statuses) {
+            if (CollectionUtils.isEmpty(statuses)) {
                 return null;
             }
-            return (root, query, cb) -> cb.equal(root.get(Activity_.status), status);
+            return (root, query, cb) -> root.get(Activity_.status).in(statuses);
         }
     }
 }

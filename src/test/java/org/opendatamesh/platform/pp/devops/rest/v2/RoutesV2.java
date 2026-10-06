@@ -3,6 +3,7 @@ package org.opendatamesh.platform.pp.devops.rest.v2;
 public enum RoutesV2 {
     ACTIVITIES("/api/v2/pp/devops/activities"),
     ACTIVITIES_EXECUTE("/api/v2/pp/devops/activities/execute"),
+    ACTIVITIES_CANCEL("/api/v2/pp/devops/activities/cancel"),
     OBSERVER_NOTIFICATIONS("/api/v2/up/observer/notifications");
 
     private final String path;

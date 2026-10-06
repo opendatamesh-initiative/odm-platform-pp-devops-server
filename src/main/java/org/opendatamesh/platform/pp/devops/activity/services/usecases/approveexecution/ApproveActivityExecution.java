@@ -49,6 +49,9 @@ class ApproveActivityExecution implements UseCase {
     public void execute() {
         validateCommand();
         Activity activity = approvePendingActivity();
+        if (activity == null) {
+            return;
+        }
         presenter.presentActivityExecutionApproved(activity);
         advancePort.advanceActivity(activity.getUuid());
     }
@@ -62,17 +65,13 @@ class ApproveActivityExecution implements UseCase {
     private Activity approvePendingActivity() {
         return transactionalPort.doInTransactionWithResults(ignored -> {
             Activity activity = persistencePort.findActivity(command.activityUuid());
-            requirePending(activity);
+            if (activity.getStatus() != ExecutionStatus.PENDING) {
+                return null;
+            }
             activity.setStatus(ExecutionStatus.RUNNING);
             activity.setStartedAt(now());
             return persistencePort.save(activity);
         }, null);
-    }
-
-    private void requirePending(Activity activity) {
-        if (activity.getStatus() != ExecutionStatus.PENDING) {
-            throw new BadRequestException("Activity " + activity.getUuid() + " can be approved only if PENDING");
-        }
     }
 
     private static Timestamp now() {

@@ -5,6 +5,7 @@ import org.opendatamesh.platform.pp.devops.client.notification.NotificationClien
 import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsStore;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivityMapper;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskMapper;
+import org.opendatamesh.platform.pp.devops.utils.services.EntityInitAndDetachService;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,12 +26,14 @@ public class AdvanceActivityFactory {
     private ExecutorSecretsStore executorSecretsStore;
     @Autowired
     private TransactionalOutboundPort transactionalOutboundPort;
+    @Autowired
+    private EntityInitAndDetachService entityInitAndDetachService;
 
     public UseCase buildAdvanceActivity(AdvanceActivityCommand command, AdvanceActivityPresenter presenter) {
         return new AdvanceActivity(
                 command,
                 presenter,
-                new AdvanceActivityPersistenceOutboundPortImpl(activityService),
+                new AdvanceActivityPersistenceOutboundPortImpl(activityService, entityInitAndDetachService),
                 new AdvanceActivityNotificationOutboundPortImpl(notificationClient, activityMapper, taskMapper),
                 new AdvanceActivitySecretsOutboundPortImpl(executorSecretsStore),
                 transactionalOutboundPort

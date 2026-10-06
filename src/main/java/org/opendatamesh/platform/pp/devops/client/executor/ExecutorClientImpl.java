@@ -1,5 +1,6 @@
 package org.opendatamesh.platform.pp.devops.client.executor;
 
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskCancelCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
@@ -30,6 +31,16 @@ class ExecutorClientImpl implements ExecutorClient {
                 secretHeaders,
                 command,
                 ExecutorTaskStartResultRes.class
+        );
+    }
+
+    @Override
+    public void cancelTask(String providerRunId) {
+        restUtils.genericPost(
+                address + "/api/v2/up/executor/tasks/cancel",
+                secretHeaders,
+                new ExecutorTaskCancelCommandRes(providerRunId),
+                Object.class
         );
     }
 

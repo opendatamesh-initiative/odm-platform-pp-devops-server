@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskCancelCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
@@ -100,6 +101,31 @@ class ExecutorClientImplTest {
                 eq(ExecutorTaskLogsRes.class)
         );
         assertSecret(logHeaders.getValue());
+    }
+
+    /**
+     * Feature: Executor client
+     *
+     * Scenario: Cancel posts the provider run id and the cached secret headers
+     *   Given executor "starter" at address A and the secret x-odm-token cached for an activity
+     *   When the client cancels a run
+     *   Then it posts to A/api/v2/up/executor/tasks/cancel with providerRunId and the header x-odm-token
+     */
+    @Test
+    void whenCancelingThenPostsProviderRunIdAndSecretHeaders() {
+        client.cancelTask("run-1");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<HttpHeader>> headers = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<ExecutorTaskCancelCommandRes> body = ArgumentCaptor.forClass(ExecutorTaskCancelCommandRes.class);
+        verify(restUtils).genericPost(
+                eq(ADDRESS + "/api/v2/up/executor/tasks/cancel"),
+                headers.capture(),
+                body.capture(),
+                eq(Object.class)
+        );
+        assertThat(body.getValue().getProviderRunId()).isEqualTo("run-1");
+        assertSecret(headers.getValue());
     }
 
     private static void assertSecret(List<HttpHeader> headers) {

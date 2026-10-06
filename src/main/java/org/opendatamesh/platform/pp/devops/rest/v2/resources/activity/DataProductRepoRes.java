@@ -1,17 +1,35 @@
-package org.opendatamesh.platform.pp.devops.activity.entities;
+package org.opendatamesh.platform.pp.devops.rest.v2.resources.activity;
 
-public class RepositoryCoordinates {
+import io.swagger.v3.oas.annotations.media.Schema;
 
+@Schema(name = "DataProductRepo")
+public class DataProductRepoRes {
+
+    @Schema(description = "Repository provider, as a string such as AZURE, BITBUCKET, GITHUB, or GITLAB")
     private String providerType;
+
+    @Schema(description = "Base URL of the repository provider")
     private String providerBaseUrl;
+
+    @Schema(description = "Provider identifier of the repository")
     private String externalIdentifier;
+
+    @Schema(description = "Repository name")
     private String name;
+
+    @Schema(description = "Owner identifier at the provider")
     private String ownerId;
+
+    @Schema(description = "Owner kind, as a string such as ORGANIZATION or ACCOUNT")
     private String ownerType;
+
+    @Schema(description = "HTTP remote URL of the repository")
     private String remoteUrlHttp;
+
+    @Schema(description = "Default branch of the repository")
     private String defaultBranch;
 
-    public RepositoryCoordinates() {
+    public DataProductRepoRes() {
     }
 
     public String getProviderType() {

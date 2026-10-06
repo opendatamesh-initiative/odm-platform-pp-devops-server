@@ -22,7 +22,7 @@ class ExecutorSecretsStoreImplTest {
      */
     @Test
     void whenRemoveAllThenOnlyThatActivityCleared() {
-        ExecutorSecretsStoreImpl store = new ExecutorSecretsStoreImpl();
+        ExecutorSecretsStoreImpl store = new ExecutorSecretsStoreImpl(new ExecutorSecretsProperties());
         store.store("starter", "activity-1", Map.of("x-odm-token", "one"));
         store.store("cli", "activity-1", Map.of("x-odm-password", "two"));
         store.store("starter", "activity-2", Map.of("x-odm-token", "kept"));

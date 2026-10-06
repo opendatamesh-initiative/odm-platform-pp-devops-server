@@ -21,7 +21,7 @@ import org.opendatamesh.platform.pp.devops.rest.v2.RoutesV2;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivityRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ExecutorParametersRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.GitRefRes;
-import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.RepositoryCoordinatesRes;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.DataProductRepoRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskResultRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.events.emitted.EmittedEventActivityFailedRes;
@@ -190,6 +190,7 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      *   When DevOps receives ACTIVITY_EXECUTION_APPROVED for it
      *   Then the activity is RUNNING with a start time
      *   And ACTIVITY_TASK_EXECUTION_REQUESTED is emitted for the task with sortOrder 0 only
+     *   And the activity in that event has no tasks, and the task has no logs or results
      */
     @Test
     public void whenActivityApprovedThenRunningAndFirstTaskRequested() {
@@ -203,16 +204,19 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
         assertThat(stored.getStartedAt()).isNotNull();
         List<EmittedEventActivityTaskExecutionRequestedRes> requests = capturedTaskRequests();
         assertThat(requests).hasSize(1);
+        assertThat(requests.get(0).getEventContent().getActivity().getTasks()).isNull();
         assertThat(requests.get(0).getEventContent().getTask().getSortOrder()).isEqualTo(0);
+        assertThat(requests.get(0).getEventContent().getTask().getLogs()).isNull();
+        assertThat(requests.get(0).getEventContent().getTask().getResults()).isNull();
     }
 
     /**
      * Feature: Approve an activity execution
      *
-     * Scenario: A duplicate approval is refused and changes nothing
+     * Scenario: A duplicate approval changes nothing
      *   Given a RUNNING activity
      *   When DevOps receives ACTIVITY_EXECUTION_APPROVED for it again
-     *   Then the notification is marked failed
+     *   Then the notification is processed successfully
      *   And the activity and its tasks are unchanged and no event is emitted
      */
     @Test
@@ -224,7 +228,7 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
 
         long sequenceId = postActivityApproved(created.getUuid());
 
-        verify(notificationClient).processingFailure(sequenceId);
+        verify(notificationClient).processingSuccess(sequenceId);
         verify(notificationClient, never()).notifyEvent(any());
         ActivityRes after = getActivity(created.getUuid());
         assertThat(after.getStatus()).isEqualTo(running.getStatus());
@@ -282,7 +286,7 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
         verify(client, times(2)).startTask(starts.capture());
         assertThat(starts.getAllValues()).allSatisfy(command -> {
             assertThat(command.getExecutorParameters()).isNotNull();
-            assertThat(command.getExecutorParameters().getRepository().getProviderType()).isEqualTo("GITHUB");
+            assertThat(command.getExecutorParameters().getDataProductRepo().getProviderType()).isEqualTo("GITHUB");
             assertThat(command.getPipelineParameters()).containsEntry("region", "eu");
         });
     }
@@ -386,10 +390,10 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
     /**
      * Feature: Execute a task on the executor
      *
-     * Scenario: A duplicate task approval is refused and changes nothing
+     * Scenario: A duplicate task approval changes nothing
      *   Given a task that is already SUCCEEDED
      *   When DevOps receives ACTIVITY_TASK_EXECUTION_APPROVED for it again
-     *   Then the notification is marked failed
+     *   Then the notification is processed successfully
      *   And the executor is not called
      */
     @Test
@@ -403,7 +407,7 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
 
         long sequenceId = postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
-        verify(notificationClient).processingFailure(sequenceId);
+        verify(notificationClient).processingSuccess(sequenceId);
         verify(executorClientFactory, never()).getExecutorClient(anyString(), anyString());
         assertThat(getActivity(created.getUuid()).getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
     }
@@ -695,10 +699,10 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
     private static ExecutorParametersRes executorParameters() {
         ExecutorParametersRes parameters = new ExecutorParametersRes();
         parameters.setPipelineIdentifier("deploy");
-        RepositoryCoordinatesRes repository = new RepositoryCoordinatesRes();
+        DataProductRepoRes repository = new DataProductRepoRes();
         repository.setProviderType("GITHUB");
         repository.setName("orders");
-        parameters.setRepository(repository);
+        parameters.setDataProductRepo(repository);
         GitRefRes ref = new GitRefRes();
         ref.setName("v1.2.0");
         ref.setType(GitRefType.TAG);

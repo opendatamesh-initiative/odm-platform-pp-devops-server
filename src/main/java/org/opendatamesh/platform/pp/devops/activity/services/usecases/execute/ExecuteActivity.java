@@ -118,7 +118,7 @@ class ExecuteActivity implements UseCase {
 
     private void validateExecutorParameters(Task task) {
         ExecutorParameters parameters = readExecutorParameters(task);
-        if (parameters.getRepository() == null || !StringUtils.hasText(parameters.getRepository().getProviderType())) {
+        if (parameters.getDataProductRepo() == null || !StringUtils.hasText(parameters.getDataProductRepo().getProviderType())) {
             throw new BadRequestException("Task " + task.getName() + ": executor parameters repository provider type is required");
         }
         if (parameters.getRef() == null || !StringUtils.hasText(parameters.getRef().getName())) {

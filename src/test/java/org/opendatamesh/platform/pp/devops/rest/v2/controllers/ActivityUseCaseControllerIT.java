@@ -14,7 +14,7 @@ import org.opendatamesh.platform.pp.devops.rest.v2.resources.ErrorRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivityRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ExecutorParametersRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.GitRefRes;
-import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.RepositoryCoordinatesRes;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.DataProductRepoRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskLogRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskResultRes;
@@ -104,7 +104,7 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
         );
         assertThat(created.getTasks()).allSatisfy(task -> {
             assertThat(task.getExecutorName()).isEqualTo("starter");
-            assertThat(task.getExecutorParameters().getRepository().getProviderType()).isEqualTo("GITHUB");
+            assertThat(task.getExecutorParameters().getDataProductRepo().getProviderType()).isEqualTo("GITHUB");
             assertThat(task.getExecutorParameters().getRef().getName()).isEqualTo("v1.2.0");
             assertThat(task.getExecutorParameters().getRef().getType()).isEqualTo(GitRefType.TAG);
         });
@@ -210,7 +210,7 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
     @Test
     public void whenExecutorParametersIncompleteThenBadRequest() {
         ActivityRes noProviderType = executableActivity("dpv-params", "prod", 1);
-        noProviderType.getTasks().get(0).getExecutorParameters().getRepository().setProviderType(" ");
+        noProviderType.getTasks().get(0).getExecutorParameters().getDataProductRepo().setProviderType(" ");
         assertBadRequest(noProviderType, "Task deploy: executor parameters repository provider type is required");
 
         ActivityRes noRefName = executableActivity("dpv-params", "prod", 1);
@@ -235,9 +235,9 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
         ActivityRes activity = executableActivity("dpv-github", "prod", 1);
         ExecutorParametersRes parameters = activity.getTasks().get(0).getExecutorParameters();
         parameters.setPipelineIdentifier(null);
-        parameters.getRepository().setProviderType("GITHUB");
-        parameters.getRepository().setOwnerId(null);
-        parameters.getRepository().setOwnerType(null);
+        parameters.getDataProductRepo().setProviderType("GITHUB");
+        parameters.getDataProductRepo().setOwnerId(null);
+        parameters.getDataProductRepo().setOwnerType(null);
 
         ResponseEntity<ActivityExecuteResultRes> response = execute(activity, null);
 
@@ -409,10 +409,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
     private static ExecutorParametersRes executorParameters() {
         ExecutorParametersRes parameters = new ExecutorParametersRes();
         parameters.setPipelineIdentifier("deploy");
-        RepositoryCoordinatesRes repository = new RepositoryCoordinatesRes();
+        DataProductRepoRes repository = new DataProductRepoRes();
         repository.setProviderType("GITHUB");
         repository.setName("orders");
-        parameters.setRepository(repository);
+        parameters.setDataProductRepo(repository);
         GitRefRes ref = new GitRefRes();
         ref.setName("v1.2.0");
         ref.setType(GitRefType.TAG);
