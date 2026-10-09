@@ -6,6 +6,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
 import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
+import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
 import org.springframework.util.StringUtils;
@@ -16,6 +17,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Cancels every pending task. A running full-control task is asked to stop on its executor.
+ * A running instrumented task is left running and is not sent to an executor.
+ * When any running task is instrumented, this cancel does not call Advance Activity.
+ * Record Task Status does, and this class only reads until the activity is terminal.
+ * When every running task is full control, a task that has already left running may advance the activity,
+ * and the wait still advances an open activity that has no running task.
+ */
 class CancelActivity implements UseCase {
 
     private static final Duration PROVIDER_RUN_ID_DEADLINE = Duration.ofSeconds(300);
@@ -52,10 +61,14 @@ class CancelActivity implements UseCase {
             closeAndPresent();
             return;
         }
-        for (String taskUuid : runningTaskUuids) {
-            stopRunningTask(taskUuid);
+        List<ClassifiedRunningTask> runningTasks = classifyRunningTasks(runningTaskUuids);
+        CancelClose close = runningTasks.stream().anyMatch(task -> task.kind() == RunningTaskKind.INSTRUMENTED)
+                ? CancelClose.RECORD_TASK_STATUS_CLOSES
+                : CancelClose.CANCEL_MAY_ADVANCE;
+        for (ClassifiedRunningTask task : runningTasks) {
+            stopRunningTask(task, close);
         }
-        waitUntilActivityIsTerminal();
+        waitUntilActivityIsTerminal(close);
     }
 
     private void validateCommand() {
@@ -96,7 +109,30 @@ class CancelActivity implements UseCase {
         presenter.presentCancelCompleted(loadActivity(command.activityUuid()));
     }
 
-    private void stopRunningTask(String taskUuid) {
+    private List<ClassifiedRunningTask> classifyRunningTasks(List<String> taskUuids) {
+        List<ClassifiedRunningTask> classified = new ArrayList<>();
+        for (String taskUuid : taskUuids) {
+            TaskSnapshot task = readTask(taskUuid);
+            RunningTaskKind kind = executorPort.findExecutionMode(task.executorName()) == ExecutionMode.INSTRUMENTED
+                    ? RunningTaskKind.INSTRUMENTED
+                    : RunningTaskKind.FULL_CONTROL;
+            classified.add(new ClassifiedRunningTask(taskUuid, kind));
+        }
+        return classified;
+    }
+
+    private void stopRunningTask(ClassifiedRunningTask task, CancelClose close) {
+        switch (task.kind()) {
+            case INSTRUMENTED -> leaveInstrumentedTaskRunning();
+            case FULL_CONTROL -> stopFullControlTask(task.taskUuid(), close);
+        }
+    }
+
+    private void leaveInstrumentedTaskRunning() {
+        // The task stays RUNNING. This cancel does not open an executor client and does not advance.
+    }
+
+    private void stopFullControlTask(String taskUuid, CancelClose close) {
         TaskSnapshot task = waitForProviderRunId(taskUuid);
         if (task.status() == ExecutionStatus.RUNNING && !StringUtils.hasText(task.providerRunId())) {
             throw new InternalException("Activity " + command.activityUuid() + " running task could not be canceled");
@@ -108,7 +144,7 @@ class CancelActivity implements UseCase {
             }
             return;
         }
-        if (!isTerminal(loadActivity(command.activityUuid()).getStatus())) {
+        if (close == CancelClose.CANCEL_MAY_ADVANCE && !isTerminal(loadActivity(command.activityUuid()).getStatus())) {
             advancePort.advanceActivity(command.activityUuid());
         }
     }
@@ -125,7 +161,7 @@ class CancelActivity implements UseCase {
         return task;
     }
 
-    private void waitUntilActivityIsTerminal() {
+    private void waitUntilActivityIsTerminal(CancelClose close) {
         int max = pollingPort.maxStatusReads();
         for (int read = 1; read <= max; read++) {
             Activity activity = loadActivity(command.activityUuid());
@@ -133,7 +169,7 @@ class CancelActivity implements UseCase {
                 presenter.presentCancelCompleted(activity);
                 return;
             }
-            if (!anyTaskRunning(activity) && isOpen(activity.getStatus())) {
+            if (close == CancelClose.CANCEL_MAY_ADVANCE && !anyTaskRunning(activity) && isOpen(activity.getStatus())) {
                 advancePort.advanceActivity(command.activityUuid());
                 activity = loadActivity(command.activityUuid());
                 if (isTerminal(activity.getStatus())) {
@@ -197,6 +233,19 @@ class CancelActivity implements UseCase {
 
     private static Timestamp now() {
         return new Timestamp(System.currentTimeMillis());
+    }
+
+    private enum RunningTaskKind {
+        INSTRUMENTED,
+        FULL_CONTROL
+    }
+
+    private enum CancelClose {
+        RECORD_TASK_STATUS_CLOSES,
+        CANCEL_MAY_ADVANCE
+    }
+
+    private record ClassifiedRunningTask(String taskUuid, RunningTaskKind kind) {
     }
 
     private record TaskSnapshot(String taskUuid, String executorName, String providerRunId, ExecutionStatus status) {

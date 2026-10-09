@@ -21,3 +21,5 @@ odm:
       starter:
         address: http://localhost:9080
         execution-mode: full-control
+      cli:
+        execution-mode: instrumented

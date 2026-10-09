@@ -22,7 +22,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Full-control happy path. Brackets run only while the Policy service is inactive.
+ * Full-control happy path. Brackets run only while the Policy service is
+ * inactive.
+ * 
  * <pre>
  * ExecuteActivity
  *   → Activity Execution Requested
@@ -34,7 +36,11 @@ import java.util.Set;
  *   → ExecuteTask
  *   → AdvanceActivity
  * </pre>
- * This class is {@code ExecuteActivity}. It creates the activity and emits Activity Execution Requested.
+ * 
+ * This class is {@code ExecuteActivity}. It creates the activity and emits
+ * Activity Execution Requested.
+ * An instrumented task is accepted and is not requested by this class.
+ * The CLI requests that task later, after the activity is running.
  */
 class ExecuteActivity implements UseCase {
 
@@ -49,6 +55,7 @@ class ExecuteActivity implements UseCase {
     private final TransactionalOutboundPort transactionalPort;
 
     private Activity activity;
+    private final Set<String> fullControlExecutorNames = new LinkedHashSet<>();
 
     ExecuteActivity(ExecuteActivityCommand command,
                     ExecuteActivityPresenter presenter,
@@ -69,7 +76,6 @@ class ExecuteActivity implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        validateExecutors();
         createAndRequestExecution();
     }
 
@@ -109,6 +115,15 @@ class ExecuteActivity implements UseCase {
         if (!StringUtils.hasText(task.getExecutorName())) {
             throw new BadRequestException("Task " + task.getName() + ": executor name is required");
         }
+        ExecutorInfo executor = executorPort.findExecutor(task.getExecutorName())
+                .orElseThrow(() -> new BadRequestException("Executor " + task.getExecutorName() + " is not declared"));
+        if (executor.executionMode() != ExecutionMode.FULL_CONTROL) {
+            // not full control, skip validation
+            return;
+        }
+        // full control task: add to fullControlExecutorNames for secrets storage and
+        // validate parameters
+        fullControlExecutorNames.add(task.getExecutorName());
         if (task.getExecutorParameters() == null || task.getExecutorParameters().isNull() || task.getExecutorParameters().isMissingNode()) {
             throw new BadRequestException("Task " + task.getName() + ": executor parameters are required");
         }
@@ -169,30 +184,12 @@ class ExecuteActivity implements UseCase {
         }
     }
 
-    private void validateExecutors() {
-        for (String executorName : distinctExecutorNames()) {
-            ExecutorInfo executor = executorPort.findExecutor(executorName)
-                    .orElseThrow(() -> new BadRequestException("Executor " + executorName + " is not declared"));
-            if (executor.executionMode() == ExecutionMode.INSTRUMENTED) {
-                throw new BadRequestException("Executor " + executorName + " runs in instrumented mode, which is not supported yet");
-            }
-        }
-    }
-
-    private Set<String> distinctExecutorNames() {
-        Set<String> names = new LinkedHashSet<>();
-        for (Task task : activity.getTasks()) {
-            names.add(task.getExecutorName());
-        }
-        return names;
-    }
-
     private void createAndRequestExecution() {
         transactionalPort.doInTransaction(() -> {
             refuseIfAnotherExecutionIsOpen();
             prepareForExecution();
             activity = persistencePort.create(activity);
-            secretsPort.storeExecutorSecrets(activity);
+            secretsPort.storeExecutorSecrets(activity, fullControlExecutorNames);
             notificationPort.emitActivityExecutionRequested(activity);
             presenter.presentActivityExecutionRequested(activity);
         });

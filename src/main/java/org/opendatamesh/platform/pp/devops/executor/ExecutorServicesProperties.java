@@ -1,10 +1,10 @@
 package org.opendatamesh.platform.pp.devops.executor;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.LinkedHashMap;
@@ -37,7 +37,7 @@ public class ExecutorServicesProperties {
 
     public Optional<String> findAddress(String name) {
         ExecutorServiceProperties properties = propertiesOf(name);
-        if (properties == null || properties.getAddress() == null) {
+        if (properties == null || !StringUtils.hasText(properties.getAddress())) {
             return Optional.empty();
         }
         return Optional.of(properties.getAddress());
@@ -50,9 +50,9 @@ public class ExecutorServicesProperties {
         return executorServices.get(name);
     }
 
+    @ValidExecutorService
     public static class ExecutorServiceProperties {
 
-        @NotBlank
         private String address;
 
         @NotNull

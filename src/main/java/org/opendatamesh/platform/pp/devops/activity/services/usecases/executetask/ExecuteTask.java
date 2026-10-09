@@ -20,7 +20,9 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Full-control happy path. Brackets run only while the Policy service is inactive.
+ * Full-control happy path. Brackets run only while the Policy service is
+         * inactive.
+ * 
  * <pre>
  * ExecuteActivity
  *   → Activity Execution Requested
@@ -32,7 +34,13 @@ import java.util.Optional;
  *   → ExecuteTask
  *   → AdvanceActivity
  * </pre>
- * This class is {@code ExecuteTask}. It polls the executor until the run is terminal, reads the logs once,
+ * 
+ * This class is {@code ExecuteTask}. It sets a pending task to running.
+ * For an instrumented task, that is the whole path: it returns after the task
+ * is running, and it does not call the executor or Advance Activity.
+ * The CLI then sends logs, results, and a terminal status. Status calls Advance Activity.
+ * For a full-control task, it polls the executor until the run is terminal,
+ * reads the logs once,
  * and calls {@code AdvanceActivity}.
  */
 class ExecuteTask implements UseCase {
@@ -71,6 +79,7 @@ class ExecuteTask implements UseCase {
             return;
         }
         if (executorPort.findExecutionMode(task.getExecutorName()) != ExecutionMode.FULL_CONTROL) {
+            // not full control, skip execution
             presenter.presentTaskExecuted(task);
             return;
         }

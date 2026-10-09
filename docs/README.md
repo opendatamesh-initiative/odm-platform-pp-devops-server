@@ -14,9 +14,9 @@ Index of guides for the **ODM Platform DevOps Server**.
 
 | Guide | Description |
 |:------|:------------|
-| [Service](service/README.md) | What an activity is, and how full-control execution proceeds |
-| [Policy service](service/policy-service.md) | Auto-approval while Policy is inactive, and a refusal while it is active |
-| [Events](service/events.md) | Messages that move an execution along |
+| [Activity lifecycle](service/activity-lifecycle.md) | What activities and tasks are, and how execute → approve → run works |
+| [Events](service/events.md) | How Notification drives approval and execution |
+| [Policy service](service/policy-service.md) | Optional governance gate vs auto-approve |
 
 Engineering conventions live in [`spdd/norms/`](../spdd/norms/README.md).
 
@@ -25,8 +25,8 @@ Engineering conventions live in [`spdd/norms/`](../spdd/norms/README.md).
 | Guide | Description |
 |:------|:------------|
 | [Development](setup/development.md) | Local build, run, profiles, and testing |
-| [Deployment](setup/deployment.md) | Docker / container deployment |
-| [Configuration](setup/configuration.md) | Properties to manage (DB, Notification, Policy, executors) |
+| [Deployment](setup/deployment.md) | Docker / container deployment and external dependencies |
+| [Configuration](setup/configuration.md) | Properties to manage (DB, Notification, Policy, executors) + minimal example |
 
 ---
 

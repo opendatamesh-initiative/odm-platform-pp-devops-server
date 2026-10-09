@@ -44,7 +44,8 @@ import static org.mockito.Mockito.verify;
 
 /**
  * Execute an activity and keep executor secrets in memory.
- * Scenarios trace to {@code spdd/prompt/BDMD-5437-202609290955-[Feat]-service-full-control-happy-path.md}.
+ * Scenarios trace to {@code spdd/prompt/BDMD-5437-202609290955-[Feat]-service-full-control-happy-path.md}
+ * and {@code spdd/prompt/BDMD-5442-202610081454-[Feat]-service-instrumented-path.md}.
  */
 public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
 
@@ -282,18 +283,77 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
     }
 
     /**
-     * Feature: Execute an activity
+     * Feature: Execute an instrumented activity
      *
-     * Scenario: An instrumented executor is refused in this story
+     * Scenario: An instrumented task is created without executor parameters
      *   Given the executor "cli" is declared in instrumented mode
-     *   When the UI executes an activity with a task on "cli"
-     *   Then the response is 400
+     *   And the task names "cli" and has no executor parameters and no pipeline parameters
+     *   When the CLI executes the activity
+     *   Then the response is 201
+     *   And the activity and the task are PENDING
+     *   And one ACTIVITY_EXECUTION_REQUESTED event is emitted
+     *   And no secrets are stored for "cli"
      */
     @Test
-    public void whenExecutorInstrumentedThenBadRequest() {
-        ActivityRes activity = executableActivity("dpv-cli", "prod", 1);
-        activity.getTasks().get(0).setExecutorName("cli");
-        assertBadRequest(activity, "Executor cli runs in instrumented mode, which is not supported yet");
+    public void whenExecutorInstrumentedThenPendingAndExecutionRequested() {
+        ActivityRes activity = namedActivity("dpv-cli", "prod", 1);
+        TaskRes task = new TaskRes();
+        task.setName("deploy");
+        task.setExecutorName("cli");
+        activity.setTasks(List.of(task));
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("x-odm-cli-executor-secret-token", SECRET);
+
+        ResponseEntity<ActivityExecuteResultRes> response = execute(activity, headers);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        ActivityRes created = response.getBody().getActivity();
+        assertThat(created.getStatus()).isEqualTo(ExecutionStatus.PENDING);
+        assertThat(created.getTasks()).singleElement().satisfies(createdTask -> {
+            assertThat(createdTask.getStatus()).isEqualTo(ExecutionStatus.PENDING);
+            assertThat(createdTask.getExecutorName()).isEqualTo("cli");
+            assertThat(createdTask.getExecutorParameters()).isNull();
+            assertThat(createdTask.getPipelineParameters()).isNull();
+        });
+        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
+        verify(notificationClient, times(1)).notifyEvent(events.capture());
+        assertThat(events.getValue()).isInstanceOf(EmittedEventActivityExecutionRequestedRes.class);
+        assertThat(executorSecretsStore.find("cli", created.getUuid())).isEmpty();
+    }
+
+    /**
+     * Feature: Execute a mixed activity
+     *
+     * Scenario: A mixed activity stores secrets only for full-control executors
+     *   Given one task names "starter" with executor parameters and a secret header
+     *   And another task names "cli" with no executor parameters
+     *   When the CLI executes the activity
+     *   Then the response is 201
+     *   And both tasks are PENDING
+     *   And secrets are stored for "starter" only
+     */
+    @Test
+    public void whenMixedActivityThenSecretsStoredForFullControlOnly() {
+        ActivityRes activity = namedActivity("dpv-mixed", "prod", 1);
+        TaskRes starter = task("deploy");
+        TaskRes cli = new TaskRes();
+        cli.setName("report");
+        cli.setExecutorName("cli");
+        activity.setTasks(List.of(starter, cli));
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("x-odm-starter-executor-secret-token", SECRET);
+        headers.add("x-odm-cli-executor-secret-token", OTHER_SECRET);
+
+        ResponseEntity<ActivityExecuteResultRes> response = execute(activity, headers);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        ActivityRes created = response.getBody().getActivity();
+        assertThat(created.getTasks()).hasSize(2);
+        assertThat(created.getTasks()).allSatisfy(createdTask ->
+                assertThat(createdTask.getStatus()).isEqualTo(ExecutionStatus.PENDING)
+        );
+        assertThat(executorSecretsStore.find("starter", created.getUuid())).containsEntry("x-odm-token", SECRET);
+        assertThat(executorSecretsStore.find("cli", created.getUuid())).isEmpty();
     }
 
     /**

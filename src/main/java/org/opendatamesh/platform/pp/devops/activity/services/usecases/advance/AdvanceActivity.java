@@ -5,6 +5,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
+import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
 import org.springframework.util.StringUtils;
@@ -27,7 +28,9 @@ import java.util.List;
  *   → ExecuteTask
  *   → AdvanceActivity
  * </pre>
- * This class is {@code AdvanceActivity}. It requests the next pending task, or closes the activity.
+ * This class is {@code AdvanceActivity}. It emits task execution requested only when the next pending task is full control.
+ * An instrumented next task stays pending. This class does not skip that task to start a later full-control task.
+ * The CLI requests that instrumented task, and a terminal status then calls this class again.
  */
 class AdvanceActivity implements UseCase {
 
@@ -43,6 +46,7 @@ class AdvanceActivity implements UseCase {
     private final AdvanceActivityCommand command;
     private final AdvanceActivityPresenter presenter;
     private final AdvanceActivityPersistenceOutboundPort persistencePort;
+    private final AdvanceActivityExecutorOutboundPort executorPort;
     private final AdvanceActivityNotificationOutboundPort notificationPort;
     private final AdvanceActivitySecretsOutboundPort secretsPort;
     private final TransactionalOutboundPort transactionalPort;
@@ -50,12 +54,14 @@ class AdvanceActivity implements UseCase {
     AdvanceActivity(AdvanceActivityCommand command,
                     AdvanceActivityPresenter presenter,
                     AdvanceActivityPersistenceOutboundPort persistencePort,
+                    AdvanceActivityExecutorOutboundPort executorPort,
                     AdvanceActivityNotificationOutboundPort notificationPort,
                     AdvanceActivitySecretsOutboundPort secretsPort,
                     TransactionalOutboundPort transactionalPort) {
         this.command = command;
         this.presenter = presenter;
         this.persistencePort = persistencePort;
+        this.executorPort = executorPort;
         this.notificationPort = notificationPort;
         this.secretsPort = secretsPort;
         this.transactionalPort = transactionalPort;
@@ -100,8 +106,7 @@ class AdvanceActivity implements UseCase {
                 return new AdvanceWork(Outcome.CLOSED, activity);
             }
             if (activity.getStatus() == ExecutionStatus.RUNNING && anyTaskPending(tasks)) {
-                notificationPort.emitTaskExecutionRequested(activity, firstPendingTask(activity, tasks));
-                return new AdvanceWork(Outcome.TASK_REQUESTED, activity);
+                return requestNextTaskIfFullControl(activity, tasks);
             }
             return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
         }, null);
@@ -173,6 +178,15 @@ class AdvanceActivity implements UseCase {
                 task.setFinishedAt(finishedAt);
             }
         }
+    }
+
+    private AdvanceWork requestNextTaskIfFullControl(Activity activity, List<Task> tasks) {
+        Task pending = firstPendingTask(activity, tasks);
+        if (executorPort.findExecutionMode(pending.getExecutorName()) == ExecutionMode.FULL_CONTROL) {
+            notificationPort.emitTaskExecutionRequested(activity, pending);
+            return new AdvanceWork(Outcome.TASK_REQUESTED, activity);
+        }
+        return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
     }
 
     private Task firstPendingTask(Activity activity, List<Task> tasks) {

@@ -74,11 +74,31 @@ docker run -p 8080:8080 \
 
 All guides live under [`docs/`](docs/README.md). Agent onboarding: [`AGENTS.md`](AGENTS.md).
 
+<details open>
+<summary><strong>Service</strong></summary>
+
+<br>
+
+| Guide | Description |
+|:------|:------------|
+| [Activity lifecycle](docs/service/activity-lifecycle.md) | Activities, tasks, and execute → approve → run |
+| [Events](docs/service/events.md) | Notification-driven approval and execution |
+| [Policy service](docs/service/policy-service.md) | Governance gate vs auto-approve |
+
+</details>
+
+<details open>
+<summary><strong>Setup</strong></summary>
+
+<br>
+
 | Guide | Description |
 |:------|:------------|
 | [Development](docs/setup/development.md) | Build, run, profiles, testing |
 | [Deployment](docs/setup/deployment.md) | Containers and external dependencies |
-| [Configuration](docs/setup/configuration.md) | DB, notification, observer identity |
+| [Configuration](docs/setup/configuration.md) | DB, Notification, Policy, executors |
+
+</details>
 
 ---
 

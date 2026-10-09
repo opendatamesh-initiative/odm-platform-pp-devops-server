@@ -5,6 +5,7 @@ import org.opendatamesh.platform.pp.devops.activity.services.usecases.advance.Ad
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorPollingProperties;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsProperties;
+import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
 import org.opendatamesh.platform.pp.devops.utils.services.EntityInitAndDetachService;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
@@ -24,6 +25,8 @@ public class CancelActivityFactory {
     @Autowired
     private ExecutorClientFactory executorClientFactory;
     @Autowired
+    private ExecutorServicesProperties executorServicesProperties;
+    @Autowired
     private ExecutorPollingProperties executorPollingProperties;
     @Autowired
     private ExecutorSecretsProperties executorSecretsProperties;
@@ -38,7 +41,7 @@ public class CancelActivityFactory {
                 presenter,
                 new CancelActivityPersistenceOutboundPortImpl(activityService, transactionManager, entityInitAndDetachService),
                 new CancelActivityAdvanceActivityOutboundPortImpl(advanceActivityFactory),
-                new CancelActivityExecutorOutboundPortImpl(executorClientFactory),
+                new CancelActivityExecutorOutboundPortImpl(executorClientFactory, executorServicesProperties),
                 new CancelActivityPollingOutboundPortImpl(executorPollingProperties, executorSecretsProperties),
                 transactionalOutboundPort
         );

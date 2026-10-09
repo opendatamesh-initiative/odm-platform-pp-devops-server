@@ -3,6 +3,7 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.advance;
 import org.opendatamesh.platform.pp.devops.activity.services.core.ActivityService;
 import org.opendatamesh.platform.pp.devops.client.notification.NotificationClient;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsStore;
+import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivityMapper;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskMapper;
 import org.opendatamesh.platform.pp.devops.utils.services.EntityInitAndDetachService;
@@ -25,6 +26,8 @@ public class AdvanceActivityFactory {
     @Autowired
     private ExecutorSecretsStore executorSecretsStore;
     @Autowired
+    private ExecutorServicesProperties executorServicesProperties;
+    @Autowired
     private TransactionalOutboundPort transactionalOutboundPort;
     @Autowired
     private EntityInitAndDetachService entityInitAndDetachService;
@@ -34,6 +37,7 @@ public class AdvanceActivityFactory {
                 command,
                 presenter,
                 new AdvanceActivityPersistenceOutboundPortImpl(activityService, entityInitAndDetachService),
+                new AdvanceActivityExecutorOutboundPortImpl(executorServicesProperties),
                 new AdvanceActivityNotificationOutboundPortImpl(notificationClient, activityMapper, taskMapper),
                 new AdvanceActivitySecretsOutboundPortImpl(executorSecretsStore),
                 transactionalOutboundPort

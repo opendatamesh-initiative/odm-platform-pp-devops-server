@@ -19,7 +19,8 @@ import org.springframework.stereotype.Service;
  *   → ExecuteTask
  *   → AdvanceActivity
  * </pre>
- * This service is the optional activity auto-approve. It emits Activity Execution Approved.
+ * This service is the optional activity auto-approve. It emits Activity Execution Approved for both modes.
+ * It does not request a task. Advance Activity emits task execution requested only when the next pending task is full control.
  */
 @Service
 public class ActivityExecutionRequestApproverService {

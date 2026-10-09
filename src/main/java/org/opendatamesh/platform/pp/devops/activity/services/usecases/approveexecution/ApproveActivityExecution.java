@@ -23,7 +23,8 @@ import java.sql.Timestamp;
  *   → AdvanceActivity
  * </pre>
  * This class is {@code ApproveActivityExecution}. On Activity Execution Approved it moves the activity
- * to running and calls {@code AdvanceActivity}.
+ * to running and calls {@code AdvanceActivity}, for both modes.
+ * When the next task is instrumented, that advance does not emit task execution requested.
  */
 class ApproveActivityExecution implements UseCase {
 

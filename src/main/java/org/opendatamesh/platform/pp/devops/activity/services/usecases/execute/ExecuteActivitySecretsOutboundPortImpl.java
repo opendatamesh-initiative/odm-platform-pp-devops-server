@@ -1,12 +1,10 @@
 package org.opendatamesh.platform.pp.devops.activity.services.usecases.execute;
 
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
-import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsStore;
 import org.springframework.http.HttpHeaders;
 
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -23,23 +21,13 @@ class ExecuteActivitySecretsOutboundPortImpl implements ExecuteActivitySecretsOu
     }
 
     @Override
-    public void storeExecutorSecrets(Activity activity) {
-        for (String executorName : distinctExecutorNames(activity)) {
+    public void storeExecutorSecrets(Activity activity, Set<String> executorNames) {
+        if (executorNames == null || executorNames.isEmpty()) {
+            return;
+        }
+        for (String executorName : executorNames) {
             executorSecretsStore.store(executorName, activity.getUuid(), rewriteSecretHeaders(executorName));
         }
-    }
-
-    private Set<String> distinctExecutorNames(Activity activity) {
-        Set<String> names = new LinkedHashSet<>();
-        if (activity.getTasks() == null) {
-            return names;
-        }
-        for (Task task : activity.getTasks()) {
-            if (task.getExecutorName() != null) {
-                names.add(task.getExecutorName());
-            }
-        }
-        return names;
     }
 
     private Map<String, String> rewriteSecretHeaders(String executorName) {
