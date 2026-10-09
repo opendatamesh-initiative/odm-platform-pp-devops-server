@@ -32,6 +32,8 @@ The goal is to check that every step has the data it needs before the REASONS Ca
 
 **Revision 8 (2026-09-30).** The analysis flowchart of the happy path, including the optional auto-approvals, is revision 11. This document keeps the step table and the sequence diagram.
 
+**Revision 9 (2026-10-09).** I-13 is the fixed status poll from BDMD-5440 DD-45. The wait is one interval, default 30 seconds. The loop stops after secrets TTL / interval reads. There is no exponential back-off.
+
 **Revision 3 (2026-09-29).** Closes I-17 to I-23 with the proposals unchanged. The analysis is at revision 6 to match (DD-33 to DD-37).
 
 **Revision 2 (2026-09-28, after the final design review).**
@@ -804,11 +806,12 @@ pipelineParameters = parametersPort.resolvePipelineParameters(task)           (D
 providerRunId = executorPort.startRun(task, pipelineParameters)               (no transaction, DD-22)
 recordProviderRunId(activityUuid, taskUuid, providerRunId)                    (tx 2)
 runStatus = followRunUntilItEnds(task):
-  attempt = 0
-  status = executorPort.readRunStatus(task)
-  while status == RUNNING:
-     executorPort.waitBeforeNextStatusRead(task, ++attempt)                   (I-13)
+  maxReads = executorPort.maxStatusReads()                                    (I-13: secrets TTL / interval)
+  for attempt = 1 .. maxReads:
      status = executorPort.readRunStatus(task)
+     if status != RUNNING: break
+     if attempt == maxReads: status = FAILED; break                           (cap reached, BDMD-5440 DD-45)
+     executorPort.waitBeforeNextStatusRead()                                  (fixed interval, I-13)
 log = executorPort.readRunLog(task)                                           (once, DD-20)
 // The CLI uploads this task's results from inside its pipeline while the status is polled.
 // Only that pipeline writes this task's results, so the rows are stored before the next task starts (DD-20).
@@ -839,7 +842,8 @@ interface ExecuteTaskExecutorOutboundPort {
     ExecutionMode findExecutionMode(String executorName);                      // ExecutorServicesProperties
     String startRun(Task task, Map<String, String> resolvedPipelineParameters); // -> providerRunId
     ExecutorRunStatus readRunStatus(Task task);                                // RUNNING | SUCCEEDED | FAILED
-    void waitBeforeNextStatusRead(Task task, int attempt);                     // back-off (I-13)
+    void waitBeforeNextStatusRead();                                           // fixed interval (I-13)
+    int maxStatusReads();                                                      // secrets TTL / interval (I-13)
     Optional<TaskLog> readRunLog(Task task);                                   // one block (I-14)
     // impl: client = executorClientFactory.getExecutorClient(task.getExecutorName(), task.getActivity().getUuid())
     //   startRun      -> client.startTask(new ExecutorTaskStartCommandRes(executorParameters of task, resolved params))
@@ -1019,7 +1023,7 @@ S1 is the only step that takes data from outside DevOps. Later steps read from t
 | I-10 | Command identifiers | UUID strings. |
 | I-11 | Advance presenter | One method. |
 | I-12 | Advance on a non-`RUNNING` activity | Refuse (`BadRequest`). |
-| I-13 | Wait between status reads | A port method, with configurable back-off (500 ms to 60 s, as in `AsyncRestUtilsTemplate`). No attempt limit in the happy path. |
+| I-13 | Wait between status reads | A port method that sleeps a fixed interval. `odm.utility-plane.executor-polling.interval`, default 30 seconds. No exponential back-off, and no `initial-delay` or `max-delay`. The loop stops after secrets TTL / interval reads, integer division. The TTL is `odm.utility-plane.executor-secrets.ttl`, default 1 hour, so the default cap is 120 reads. Reaching the cap records the task as `FAILED`. *(revised 2026-10-09, BDMD-5440 DD-45)* |
 | I-14 | Log shape | One block, stored as one `TaskLog`. Empty content stores no row. The no-op line is dropped with the no-op. |
 | I-15 | Executor HTTP API | The draft-board paths and the `RUNNING | SUCCEEDED | FAILED` vocabulary. The start body has no UUIDs *(final review)*. |
 | I-16 | Cache library | Caffeine. |
@@ -1034,4 +1038,4 @@ S1 is the only step that takes data from outside DevOps. Later steps read from t
 | I-20 | Status of the DPV's other activities in the requested events, for policies such as "dev succeeded before prod" (to be evaluated, final review) | **Defer to the Policy stories.** Auto-approval does not need it, and the Policy service can read `GET /activities?dataProductVersionUuid=…`. The shape if added later: `eventContent.dataProductVersionActivities[] = { uuid, name, sortOrder, status, createdAt, finishedAt }`, latest per name, without tasks. |
 | I-21 | Executor parameters type (§2.5) | The §2.5 shape, with one provider-neutral `pipelineIdentifier` instead of per-provider fields. `providerType` and `ownerType` are strings with the Registry's values, not DevOps enums: DevOps never branches on them, and a new provider needs no DevOps change. `repositoryKey` is kept for Policy checks. |
 | I-22 | Starter executor scope | As in §9.7. Replace the v1 endpoint rather than keep both. Upgrade to Spring Boot 3.5 and Java 21. Keep runs in memory. Failure and duration are controlled by configuration defaults plus the reserved pipeline parameters `starter.outcome` and `starter.durationSeconds`. |
-| I-23 | Provider statuses that are neither success nor failure (cancelled, skipped, timed out, stopped, expired, error, manual or paused) | Terminal and not successful (cancelled, skipped, timed out, stopped, expired, error, neutral) → `FAILED`. Waiting for a person or a resource (manual, paused, waiting, action required) → `RUNNING`, and DevOps keeps polling. A limit belongs to the errors story. |
+| I-23 | Provider statuses that are neither success nor failure (cancelled, skipped, timed out, stopped, expired, error, manual or paused) | Terminal and not successful (cancelled, skipped, timed out, stopped, expired, error, neutral) → `FAILED`. Waiting for a person or a resource (manual, paused, waiting, action required) → `RUNNING`, and DevOps keeps polling until the run leaves `RUNNING` or the I-13 cap is reached. |

@@ -2,7 +2,7 @@
 
 Properties you **must** or **should** set for the DevOps Server, including database, product-plane integration, and executors. Framework defaults (Flyway script locations, Hibernate `ddl-auto`, banners, logging patterns, and similar) are left to the application YAML and are not listed here.
 
-Related: [Development](development.md) · [Deployment](deployment.md) · [Activity lifecycle](../service/activity-lifecycle.md) · [Events](../service/events.md) · [Policy service](../service/policy-service.md)
+Related: [Development](development.md) · [Deployment](deployment.md) · [How DevOps works](../service/how-devops-works.md) · [Events](../service/events.md)
 
 ## Minimal production-like configuration
 
@@ -124,7 +124,7 @@ When Notification is active, DevOps subscribes at startup to the execution messa
 
 ## Policy service
 
-Optional governance gate. When inactive, DevOps auto-approves `*_REQUESTED`. Behavior: [Policy service](../service/policy-service.md).
+Optional governance gate. When inactive, DevOps auto-approves `*_REQUESTED`. Behavior: [Policies](../service/how-devops-works.md#6-policies-approving-executions).
 
 | Property | Purpose | Default | Manage when |
 | --- | --- | --- | --- |
@@ -152,7 +152,7 @@ Used when registering with Notification. Defaults are fine for a single DevOps s
 
 ## Executors
 
-Declare each executor by name and an execution mode of `full-control` or `instrumented`. An empty declaration list means no executor can be used. Behavior of the two modes: [Activity lifecycle](../service/activity-lifecycle.md).
+Declare each executor by name and an execution mode of `full-control` or `instrumented`. An empty declaration list means no executor can be used. Behavior of the two modes: [Full control and instrumented](../service/how-devops-works.md#3-how-pipelines-are-managed-full-control-and-instrumented). What an executor is: [Executors](../service/how-devops-works.md#4-executors).
 
 | Property | Purpose | Manage when |
 | --- | --- | --- |

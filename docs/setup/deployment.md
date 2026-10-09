@@ -2,7 +2,7 @@
 
 How to deploy the DevOps Server as a container (recommended for production and shared environments).
 
-Related: [Configuration](configuration.md) · [Development](development.md) · [Activity lifecycle](../service/activity-lifecycle.md) · [Events](../service/events.md) · [Policy service](../service/policy-service.md)
+Related: [Configuration](configuration.md) · [Development](development.md) · [How DevOps works](../service/how-devops-works.md) · [Events](../service/events.md)
 
 ## What you need
 
@@ -88,4 +88,4 @@ Optional: `JAVA_OPTS` for JVM flags; `PROFILES_ACTIVE` to override the default `
 
 - Properties to manage: [Configuration](configuration.md)
 - Local build without containers: [Development](development.md)
-- Execution and observer behavior: [Activity lifecycle](../service/activity-lifecycle.md), [Events](../service/events.md), [Policy service](../service/policy-service.md)
+- What the service does and how executions flow: [How DevOps works](../service/how-devops-works.md), [Events](../service/events.md)

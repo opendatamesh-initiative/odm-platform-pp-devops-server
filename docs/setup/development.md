@@ -62,7 +62,7 @@ Product-plane prefix: **`/api/v2/pp/devops/`**.
 
 ### External services for local execution flows
 
-The approval loop needs the Notification service when `odm.product-plane.notification-service.active=true`. Policy is optional — see [Policy service](../service/policy-service.md). Full-control tasks also need the executor named in configuration to be reachable.
+The approval loop needs the Notification service when `odm.product-plane.notification-service.active=true`. Policy is optional — see [Policies](../service/how-devops-works.md#6-policies-approving-executions). Full-control tasks also need the executor named in configuration to be reachable.
 
 ## Testing
 

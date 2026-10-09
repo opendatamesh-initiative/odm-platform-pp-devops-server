@@ -14,9 +14,8 @@ Index of guides for the **ODM Platform DevOps Server**.
 
 | Guide | Description |
 |:------|:------------|
-| [Activity lifecycle](service/activity-lifecycle.md) | What activities and tasks are, and how execute → approve → run works |
-| [Events](service/events.md) | How Notification drives approval and execution |
-| [Policy service](service/policy-service.md) | Optional governance gate vs auto-approve |
+| [How DevOps works](service/how-devops-works.md) | **Start here.** What the service is for, how the lifecycle process goes, then each capability in detail: activities and tasks, full control and instrumented pipelines, executors, results, policies, cancel |
+| [Events](service/events.md) | Reference: the messages DevOps exchanges for approvals and outcomes |
 
 Engineering conventions live in [`spdd/norms/`](../spdd/norms/README.md).
 

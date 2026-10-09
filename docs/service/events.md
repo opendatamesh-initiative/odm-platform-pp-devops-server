@@ -1,67 +1,63 @@
 # Events
 
-High-level view of how DevOps uses the Notification service to run an activity, plus the catalogue of messages.
+Reference list of the messages DevOps exchanges with the rest of the platform. Read [How DevOps works](how-devops-works.md) first: this page is the low-level detail for people who write a Policy service, or who want to react when an activity ends.
 
-Related:
-
-- [Activity lifecycle](activity-lifecycle.md) — states these messages move
-- [Policy service](policy-service.md) — who approves a request
-- [Configuration](../setup/configuration.md) — Notification and observer settings
+Related: [How DevOps works](how-devops-works.md) · [Configuration](../setup/configuration.md)
 
 ## Role of events
 
-DevOps does not finish an execution inside the execute call. It **emits** a request when an activity is created or a task is ready, and **reacts** when an approval or rejection arrives.
+DevOps exchanges messages with the rest of the platform through the Notification service. It uses them for two things:
 
-The Notification service is the bus:
+- **Approvals.** DevOps publishes a request each time an activity or a task needs approval, and waits for the answer. The answer comes from the Policy service or, while the Policy service is inactive, from DevOps itself. See [Policies](how-devops-works.md#6-policies-approving-executions).
+- **Outcomes.** DevOps announces when an activity has succeeded, failed, or been canceled, so other services can react.
 
-- DevOps **publishes** requests and outcomes
-- While Policy is inactive, DevOps also publishes the approval
-- Notification **delivers** those messages back to the DevOps observer
+Notification must be active, and able to reach DevOps, for approvals to arrive. Otherwise an execution stays `PENDING`. See [Configuration](../setup/configuration.md#notification-service).
 
-Without Notification active, that loop does not run and the activity stays `PENDING`.
-
-## How DevOps joins the bus
-
-At startup, when Notification is active, DevOps:
-
-1. Checks that Notification is reachable
-2. Registers as an **observer** (callback URL = `server.baseUrl`, plus observer name and display name)
-3. Subscribes to the messages it handles: activity execution requested, approved, and rejected; task execution requested, approved, and rejected
-
-Inbound messages arrive at `POST /api/v2/up/observer/notifications`. Property details: [Configuration](../setup/configuration.md).
-
-```text
-DevOps emits *_REQUESTED
-        │
-        ▼
-  Policy or auto-approve
-        │
-        ▼
-DevOps receives *_APPROVED / *_REJECTED
-        │
-        ▼
-  the activity starts, or the task runs
-        │
-        ▼
-  the next full-control task is requested, a caller asks for an instrumented task, or the activity succeeds, fails, or is canceled
+```mermaid
+flowchart LR
+  D1["DevOps asks<br/>for approval"] --> N1(("Notification"))
+  N1 --> P{"Policy service,<br/>or automatic approval"}
+  P --> N2(("Notification"))
+  N2 --> D2["DevOps starts the work,<br/>or fails the activity"]
+  D2 --> O["When the activity ends:<br/>outcome announced"]
 ```
-
-`ACTIVITY_TASK_EXECUTION_REQUESTED` is the same message in both modes. DevOps emits it when the next task is full control. The caller causes it when asking to run an instrumented task.
 
 ## Event catalogue
 
-| Event type | Emitted by | Consumed by | What it carries |
-| --- | --- | --- | --- |
-| `ACTIVITY_EXECUTION_REQUESTED` | DevOps, when an activity is created for execution | DevOps auto-approval, while Policy is inactive | The activity, its position among the data product version's activities, and its tasks, without logs or results |
-| `ACTIVITY_EXECUTION_APPROVED` | DevOps auto-approval, or Policy | DevOps, which starts the activity | The activity identifier, name, position, and data product version |
-| `ACTIVITY_EXECUTION_REJECTED` | Policy | DevOps, which fails the activity | The activity identifier, name, position, and data product version |
-| `ACTIVITY_TASK_EXECUTION_REQUESTED` | DevOps, for the next full-control task; also when a caller asks to run an instrumented task | DevOps auto-approval, while Policy is inactive | The activity without its tasks, and the one task to run, without logs or results |
-| `ACTIVITY_TASK_EXECUTION_APPROVED` | DevOps auto-approval, or Policy | DevOps, which runs that task | The activity block above, and the task identifier and name |
-| `ACTIVITY_TASK_EXECUTION_REJECTED` | Policy | DevOps, which fails that task | The activity block above, and the task identifier and name |
-| `ACTIVITY_SUCCEEDED` | DevOps, when every task has succeeded | External listeners | The finished activity, without logs or results |
-| `ACTIVITY_FAILED` | DevOps, when a task has failed and the rest that had not started are canceled, and when Policy refuses an execution | External listeners | The finished activity, without logs or results |
-| `ACTIVITY_CANCELED` | DevOps, when a user cancel closes the activity | External listeners | The finished activity, without logs or results |
+### Approval of an activity
 
-Every message is about one activity. It includes that activity's position. It does not include logs, results, secrets, or the other activities of the data product version.
+| Event | Published by | Meaning | Content |
+|---|---|---|---|
+| `ACTIVITY_EXECUTION_REQUESTED` | DevOps | An activity has been requested and waits for approval | The activity, its position in the lifecycle, its data product version, and its tasks |
+| `ACTIVITY_EXECUTION_APPROVED` | Policy service, or DevOps when the Policy service is inactive | The activity may start | Which activity |
+| `ACTIVITY_EXECUTION_REJECTED` | Policy service | The activity is refused, and fails | Which activity |
 
-Executor parameters and pipeline parameters may appear on the activity and task inside a request. They are not secret. Secret values never appear in a message.
+### Approval of a task
+
+| Event | Published by | Meaning | Content |
+|---|---|---|---|
+| `ACTIVITY_TASK_EXECUTION_REQUESTED` | DevOps | A task is about to run and waits for approval | The activity (without its other tasks), and the task to run |
+| `ACTIVITY_TASK_EXECUTION_APPROVED` | Policy service, or DevOps when the Policy service is inactive | The task may run | Which activity and which task |
+| `ACTIVITY_TASK_EXECUTION_REJECTED` | Policy service | The task is refused. It fails, and so does its activity. | Which activity and which task |
+
+A task approval is requested in the same way in both execution modes. For a full-control task, DevOps requests it when the task's turn comes. For an instrumented task, DevOps requests it when the ODM CLI asks to run the task.
+
+### Outcome of an activity
+
+| Event | Published by | Meaning | Content |
+|---|---|---|---|
+| `ACTIVITY_SUCCEEDED` | DevOps | Every task has succeeded | The finished activity |
+| `ACTIVITY_FAILED` | DevOps | A task failed, or a policy refused the activity or one of its tasks | The finished activity |
+| `ACTIVITY_CANCELED` | DevOps | The owner canceled the activity | The finished activity |
+
+## What messages never contain
+
+- Credentials. They are never part of any message.
+- Logs and results of the tasks.
+- The other activities of the same data product version.
+
+Pipeline locations and pipeline inputs do appear in approval requests, so the Policy service can check them. They are not secret.
+
+---
+
+↑ Back to the [docs index](../README.md)
