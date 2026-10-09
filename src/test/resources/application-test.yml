@@ -14,3 +14,15 @@ odm:
     notification-service:
       address: http://localhost:8001
       active: false
+  utility-plane:
+    executor-polling:
+      interval: 1ms
+    executor-secrets:
+      ttl: 1h
+    executor-services:
+      starter:
+        address: http://localhost:9080
+        execution-mode: full-control
+      cli:
+        address: http://localhost:9081
+        execution-mode: instrumented

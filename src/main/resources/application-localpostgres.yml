@@ -8,3 +8,18 @@ spring:
     url: jdbc:postgresql://localhost:5432/postgres?useSSL=false
     username: postgres
     password: my-secret-password
+
+odm:
+  product-plane:
+    notification-service:
+      address: http://localhost:8006
+      active: true
+    policy-service:
+      active: false
+  utility-plane:
+    executor-services:
+      starter:
+        address: http://localhost:9080
+        execution-mode: full-control
+      cli:
+        execution-mode: instrumented

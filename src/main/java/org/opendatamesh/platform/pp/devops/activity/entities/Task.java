@@ -1,5 +1,8 @@
 package org.opendatamesh.platform.pp.devops.activity.entities;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.opendatamesh.platform.pp.devops.utils.entities.VersionedEntity;
 
 import jakarta.persistence.CascadeType;
@@ -57,6 +60,16 @@ public class Task extends VersionedEntity {
 
     @Column(name = "finished_at")
     private Timestamp finishedAt;
+
+    @Column(name = "executor_name", length = 255)
+    private String executorName;
+
+    @Column(name = "executor_parameters", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode executorParameters;
+
+    @Column(name = "pipeline_parameters", columnDefinition = "text")
+    private String pipelineParameters;
 
     @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<TaskLog> logs = new ArrayList<>();
@@ -142,6 +155,30 @@ public class Task extends VersionedEntity {
 
     public void setFinishedAt(Timestamp finishedAt) {
         this.finishedAt = finishedAt;
+    }
+
+    public String getExecutorName() {
+        return executorName;
+    }
+
+    public void setExecutorName(String executorName) {
+        this.executorName = executorName;
+    }
+
+    public JsonNode getExecutorParameters() {
+        return executorParameters;
+    }
+
+    public void setExecutorParameters(JsonNode executorParameters) {
+        this.executorParameters = executorParameters;
+    }
+
+    public String getPipelineParameters() {
+        return pipelineParameters;
+    }
+
+    public void setPipelineParameters(String pipelineParameters) {
+        this.pipelineParameters = pipelineParameters;
     }
 
     public List<TaskLog> getLogs() {

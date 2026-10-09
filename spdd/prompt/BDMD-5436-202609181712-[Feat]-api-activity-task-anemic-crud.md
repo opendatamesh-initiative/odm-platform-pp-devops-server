@@ -138,7 +138,7 @@ classDiagram
 **Physical model** (Flyway; Hibernate schema `odm_devops`; **replace** `src/main/resources/db/migration/postgresql/V1__init_schema.sql` with this first schema). Plain `CREATE TABLE IF NOT EXISTS`:
 
 - `activities`: `uuid` PK `varchar(36)`, `data_product_version_uuid` `varchar(36)`, `data_product_fqn` `varchar(255)`, `data_product_version_tag` `varchar(255)`, `name` `varchar(255)`, `sort_order` `integer`, `status` `varchar(255)`, `started_at` timestamp, `finished_at` timestamp, `created_at` timestamp, `updated_at` timestamp. No business `NOT NULL`. Required fields are checked in `validate`.
-- `activities_tasks`: `uuid` PK `varchar(36)`, `activity_uuid` `varchar(36)` references `activities(uuid)` **on delete cascade**, `name` `varchar(255)`, `description` text, `sort_order` `integer`, `status` `varchar(255)`, `provider_run_id` `varchar(255)`, `started_at` timestamp, `finished_at` timestamp, `created_at`, `updated_at`.
+- `activities_tasks`: `uuid` PK `varchar(36)`, `activity_uuid` `varchar(36)` references `activities(uuid)` **on delete cascade**, `name` `varchar(255)`, `description` text, `sort_order` `integer`, `status` `varchar(255)`, `provider_run_id` `varchar(255)`, `executor_name` `varchar(255)`, `executor_parameters` text, `pipeline_parameters` text, `started_at` timestamp, `finished_at` timestamp, `created_at`, `updated_at`. The last three business columns were added by BDMD-5437 in this same `V1`, before the first deployment.
 - `activities_tasks_logs`: `uuid` PK `varchar(36)`, `task_uuid` `varchar(36)` references `activities_tasks(uuid)` **on delete cascade**, `content` text, `generated_at` timestamp, `created_at`, `updated_at`.
 - `activities_tasks_results`: `uuid` PK `varchar(36)`, `task_uuid` `varchar(36)` references `activities_tasks(uuid)` **on delete cascade**, `content` text, `generated_at` timestamp, `created_at`, `updated_at`.
 - Indexes: `activities (data_product_version_uuid, name, status)`; `activities_tasks (activity_uuid, status)`; `activities_tasks (provider_run_id)` (plain btree, nullable).
@@ -158,7 +158,7 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
    - Identity is server-generated (`GenerationType.UUID`) unless a PUT body names a task, log, or result that already belongs to that activity. Path uuid wins for the activity. `beforeCreation` clears every client uuid so create cannot merge an existing row. `beforeOverwrite` keeps a nested uuid only when that row already belongs to the activity being written, then applies the incoming collections onto the managed activity so orphan removal deletes what the body omitted.
    - Search overrides `findAllResourcesFiltered` and maps with a graph-free mapper method so the task graph is not loaded. Do not override `afterFindOne`. GET-by-id uses the mapped read path.
    - Errors use `BadRequestException` (400) and `NotFoundException` (404) through the existing `ResponseExceptionHandler`. Invalid enum JSON and invalid sort (`PropertyReferenceException`) are already 400. Do not add a new handler.
-   - Replace placeholder Flyway `V1` with the physical model above. Do not add `V2` for this schema.
+   - Replace placeholder Flyway `V1` with the physical model above. Do not add `V2` for this schema. BDMD-5437 later added the task execution columns to this same `V1`, before the first deployment.
 
 3. Business logic:
    - Required on the activity: `dataProductVersionUuid`, `name`. Optional: `dataProductFqn`, `dataProductVersionTag`, `sortOrder`, `startedAt`, `finishedAt`, and the task list.
@@ -545,6 +545,6 @@ Feature: Activity is the only resource
    - Creating tasks at execute time, re-run copying, and polling logs once at a terminal status.
    - `SKIPPED` and `TIMEOUT`.
 6. Exception constraints: validation failures are `BadRequestException` with the messages in Operations. Unknown status JSON is 400. Unknown sort is 400. Unknown activity uuid is 404.
-7. Technical constraints: do not edit the generic CRUD base. Do not add Lombok. After this change, do not edit Flyway `V1` again; later tables need a new version. Schema `odm_devops` comes from Hibernate configuration, not from a schema prefix in the SQL.
+7. Technical constraints: do not edit the generic CRUD base. Do not add Lombok. After the first deployment, do not edit Flyway `V1` again; later changes need a new version. BDMD-5437 added `executor_name`, `executor_parameters`, and `pipeline_parameters` to `activities_tasks` in `V1` before that deployment. Schema `odm_devops` comes from Hibernate configuration, not from a schema prefix in the SQL.
 8. Data constraints: `status` column `varchar(255)`. `sort_order` nullable integer with no gap check. `generated_at` nullable and never defaulted from `created_at`. Log and result content max 1048576. Task description max 10000. Other strings max 255, except `data_product_version_uuid` max 36.
 9. API constraints: JSON names are the Java bean names (`dataProductVersionUuid`, `dataProductFqn`, `dataProductVersionTag`, `sortOrder`, `providerRunId`, `generatedAt`, `startedAt`, `finishedAt`). Audit fields on the request are ignored. Response includes them.

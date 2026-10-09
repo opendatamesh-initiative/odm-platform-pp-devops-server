@@ -8,3 +8,16 @@ spring:
     username: sa
     password:
     driver-class-name: org.h2.Driver
+
+odm:
+  product-plane:
+    notification-service:
+      address: http://localhost:8006
+      active: true
+    policy-service:
+      active: false
+  utility-plane:
+    executor-services:
+      starter:
+        address: http://localhost:9080
+        execution-mode: full-control

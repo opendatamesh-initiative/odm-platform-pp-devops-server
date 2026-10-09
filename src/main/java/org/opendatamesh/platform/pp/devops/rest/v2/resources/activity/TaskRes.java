@@ -6,6 +6,7 @@ import org.opendatamesh.platform.pp.devops.utils.resources.VersionedRes;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 @Schema(name = "tasks")
 public class TaskRes extends VersionedRes {
@@ -36,6 +37,15 @@ public class TaskRes extends VersionedRes {
 
     @Schema(description = "Client-owned execution finish timestamp")
     private Date finishedAt;
+
+    @Schema(description = "Name of the executor, as declared in DevOps configuration")
+    private String executorName;
+
+    @Schema(description = "What the executor needs to find and start the pipeline. Not secret: stored, returned, and sent in events.")
+    private ExecutorParametersRes executorParameters;
+
+    @Schema(description = "Arguments passed to the pipeline run. Values may contain ${…} placeholders. Not secret.")
+    private Map<String, String> pipelineParameters;
 
     @Schema(description = "Owned log records")
     private List<TaskLogRes> logs;
@@ -113,6 +123,30 @@ public class TaskRes extends VersionedRes {
 
     public void setFinishedAt(Date finishedAt) {
         this.finishedAt = finishedAt;
+    }
+
+    public String getExecutorName() {
+        return executorName;
+    }
+
+    public void setExecutorName(String executorName) {
+        this.executorName = executorName;
+    }
+
+    public ExecutorParametersRes getExecutorParameters() {
+        return executorParameters;
+    }
+
+    public void setExecutorParameters(ExecutorParametersRes executorParameters) {
+        this.executorParameters = executorParameters;
+    }
+
+    public Map<String, String> getPipelineParameters() {
+        return pipelineParameters;
+    }
+
+    public void setPipelineParameters(Map<String, String> pipelineParameters) {
+        this.pipelineParameters = pipelineParameters;
     }
 
     public List<TaskLogRes> getLogs() {

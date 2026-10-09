@@ -4,11 +4,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
+import org.opendatamesh.platform.pp.devops.activity.entities.GitRefType;
 import org.opendatamesh.platform.pp.devops.activity.repositories.ActivitiesRepository;
 import org.opendatamesh.platform.pp.devops.rest.v2.DevOpsApplicationIT;
 import org.opendatamesh.platform.pp.devops.rest.v2.RoutesV2;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.ErrorRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivityRes;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ExecutorParametersRes;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.GitRefRes;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.DataProductRepoRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskLogRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskResultRes;
@@ -25,6 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -841,6 +846,61 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
                 JsonNode.class
         );
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Scenario: CANCELED is accepted and execution fields round-trip
+     *   Given an activity whose status is CANCELED and a task with an executor name, executor parameters, and pipeline parameters
+     *   When the client POSTs /api/v2/pp/devops/activities and then GETs that activity
+     *   Then the response status is CANCELED
+     *   And the task executor name, executor parameters, and pipeline parameters match the body
+     */
+    @Test
+    public void whenCreateCanceledActivityWithExecutionFieldsThenRoundTrip() {
+        ActivityRes payload = newActivity("dpv-canceled-fields", "canceled-fields");
+        payload.setStatus(ExecutionStatus.CANCELED);
+
+        ExecutorParametersRes executorParameters = new ExecutorParametersRes();
+        executorParameters.setRepositoryKey("main");
+        executorParameters.setPipelineIdentifier("build");
+        DataProductRepoRes repository = new DataProductRepoRes();
+        repository.setProviderType("GITHUB");
+        repository.setName("orders");
+        executorParameters.setDataProductRepo(repository);
+        GitRefRes ref = new GitRefRes();
+        ref.setName("v1.2.0");
+        ref.setType(GitRefType.TAG);
+        executorParameters.setRef(ref);
+
+        Map<String, String> pipelineParameters = new LinkedHashMap<>();
+        pipelineParameters.put("region", "eu");
+
+        TaskRes task = new TaskRes();
+        task.setName("deploy");
+        task.setExecutorName("starter");
+        task.setExecutorParameters(executorParameters);
+        task.setPipelineParameters(pipelineParameters);
+        payload.setTasks(List.of(task));
+
+        ActivityRes created = createActivity(payload);
+        ResponseEntity<ActivityRes> response = rest.getForEntity(
+                apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
+                ActivityRes.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getStatus()).isEqualTo(ExecutionStatus.CANCELED);
+        assertThat(response.getBody().getTasks()).hasSize(1);
+        TaskRes stored = response.getBody().getTasks().get(0);
+        assertThat(stored.getExecutorName()).isEqualTo("starter");
+        assertThat(stored.getExecutorParameters().getRepositoryKey()).isEqualTo("main");
+        assertThat(stored.getExecutorParameters().getPipelineIdentifier()).isEqualTo("build");
+        assertThat(stored.getExecutorParameters().getDataProductRepo().getProviderType()).isEqualTo("GITHUB");
+        assertThat(stored.getExecutorParameters().getDataProductRepo().getName()).isEqualTo("orders");
+        assertThat(stored.getExecutorParameters().getRef().getName()).isEqualTo("v1.2.0");
+        assertThat(stored.getExecutorParameters().getRef().getType()).isEqualTo(GitRefType.TAG);
+        assertThat(stored.getPipelineParameters()).containsEntry("region", "eu");
     }
 
     private ActivityRes createActivity(ActivityRes payload) {

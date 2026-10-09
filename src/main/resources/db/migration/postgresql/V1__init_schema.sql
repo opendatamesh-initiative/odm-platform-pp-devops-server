@@ -13,17 +13,20 @@ create table if not exists activities (
 );
 
 create table if not exists activities_tasks (
-    uuid              varchar(36) primary key,
-    activity_uuid     varchar(36) references activities(uuid) on delete cascade,
-    name              varchar(255),
-    description       text,
-    sort_order        integer,
-    status            varchar(255),
-    provider_run_id   varchar(255),
-    started_at        timestamp,
-    finished_at       timestamp,
-    created_at        timestamp,
-    updated_at        timestamp
+    uuid                  varchar(36) primary key,
+    activity_uuid         varchar(36) references activities(uuid) on delete cascade,
+    name                  varchar(255),
+    description           text,
+    sort_order            integer,
+    status                varchar(255),
+    provider_run_id       varchar(255),
+    executor_name         varchar(255),
+    executor_parameters   jsonb,
+    pipeline_parameters   text,
+    started_at            timestamp,
+    finished_at           timestamp,
+    created_at            timestamp,
+    updated_at            timestamp
 );
 
 create table if not exists activities_tasks_logs (
