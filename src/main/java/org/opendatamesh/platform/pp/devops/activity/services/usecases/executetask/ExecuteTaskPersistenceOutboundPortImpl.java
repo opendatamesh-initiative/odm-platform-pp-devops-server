@@ -16,7 +16,7 @@ class ExecuteTaskPersistenceOutboundPortImpl implements ExecuteTaskPersistenceOu
     }
 
     @Override
-    public Activity findActivity(String uuid) {
+    public Activity findForUpdate(String uuid) {
         Activity activity = activityService.findOne(uuid);
         entityInitAndDetachService.refresh(activity);
         return activity;

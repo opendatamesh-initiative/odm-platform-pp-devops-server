@@ -53,7 +53,7 @@ class RejectTaskExecution implements UseCase {
 
     private Task rejectPendingTask() {
         return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findActivity(command.activityUuid());
+            Activity activity = persistencePort.findForUpdate(command.activityUuid());
             Task task = findTask(activity, command.taskUuid());
             if (activity.getStatus() != ExecutionStatus.RUNNING || task.getStatus() != ExecutionStatus.PENDING) {
                 return null;

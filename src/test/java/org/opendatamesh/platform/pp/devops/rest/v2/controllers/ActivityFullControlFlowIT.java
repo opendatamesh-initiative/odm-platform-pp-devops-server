@@ -4,18 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.GitRefType;
-import org.opendatamesh.platform.pp.devops.activity.repositories.ActivitiesRepository;
-import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClient;
-import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
-import org.opendatamesh.platform.pp.devops.client.notification.NotificationClient;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsStore;
+import org.opendatamesh.platform.pp.devops.rest.v2.ActivityHistoryFixture;
 import org.opendatamesh.platform.pp.devops.rest.v2.DevOpsApplicationIT;
 import org.opendatamesh.platform.pp.devops.rest.v2.RoutesV2;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivityRes;
@@ -33,33 +27,16 @@ import org.opendatamesh.platform.pp.devops.rest.v2.resources.event.autoapprove.E
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.event.autoapprove.EmittedEventActivityTaskExecutionApprovedRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.notification.NotificationDispatchRes;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.JdbcTemplate;
-
-import java.sql.Timestamp;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
  * Full-control approvals, task runs, placeholders, and the observer.
@@ -67,31 +44,19 @@ import static org.mockito.Mockito.when;
  */
 public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
 
-    @Autowired
-    private ActivitiesRepository activitiesRepository;
 
-    @Autowired
-    private NotificationClient notificationClient;
-
-    @Autowired
-    private ExecutorClientFactory executorClientFactory;
 
     @Autowired
     private ExecutorSecretsStore executorSecretsStore;
 
     @Autowired
-    private JdbcTemplate jdbcTemplate;
-
-    @Value("${spring.jpa.properties.hibernate.default_schema}")
-    private String schema;
+    private ActivityHistoryFixture history;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private long sequence = 1L;
 
     @BeforeEach
     void resetState() {
-        activitiesRepository.deleteAll();
-        reset(notificationClient, executorClientFactory);
         sequence = 1L;
     }
 
@@ -105,15 +70,18 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenActivityEndsThenSecretsRemoved() {
-        ExecutorClient client = stubExecutor(status("SUCCEEDED"), "build log");
+        // Given
+        stubExecutor(status("SUCCEEDED"), "build log");
         ActivityRes created = executeOneTask("dpv-secret-end", "prod", "token-value");
         assertThat(executorSecretsStore.find("starter", created.getUuid())).containsEntry("x-odm-token", "token-value");
 
+        // When
         postActivityApproved(created.getUuid());
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
+        // Then
         assertThat(executorSecretsStore.find("starter", created.getUuid())).isEmpty();
-        verify(client, atLeastOnce()).startTask(any());
+        assertThat(executor().starts()).isNotEmpty();
     }
 
     /**
@@ -127,6 +95,7 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenActivityExecutionRequestedThenApprovedEmitted() {
+        // Given
         ObjectNode activity = objectMapper.createObjectNode();
         activity.put("uuid", "activity-1");
         activity.put("name", "prod");
@@ -135,18 +104,19 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
         ObjectNode content = objectMapper.createObjectNode();
         content.set("activity", activity);
 
+        // When
         long sequenceId = postNotification("ACTIVITY_EXECUTION_REQUESTED", content);
 
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient).notifyEvent(events.capture());
-        assertThat(events.getValue()).isInstanceOf(EmittedEventActivityExecutionApprovedRes.class);
-        EmittedEventActivityExecutionApprovedRes event = (EmittedEventActivityExecutionApprovedRes) events.getValue();
+        // Then
+        assertThat(notifiedEvents()).singleElement().isInstanceOf(EmittedEventActivityExecutionApprovedRes.class);
+        EmittedEventActivityExecutionApprovedRes event =
+                (EmittedEventActivityExecutionApprovedRes) notifiedEvents().get(0);
         assertThat(event.getResourceIdentifier()).isEqualTo("activity-1");
         assertThat(event.getEventContent().getActivity().getUuid()).isEqualTo("activity-1");
         assertThat(event.getEventContent().getActivity().getName()).isEqualTo("prod");
         assertThat(event.getEventContent().getActivity().getSortOrder()).isEqualTo(2);
         assertThat(event.getEventContent().getActivity().getDataProductVersionUuid()).isEqualTo("dpv-1");
-        verify(notificationClient).processingSuccess(sequenceId);
+        assertProcessingSucceeded(sequenceId);
     }
 
     /**
@@ -159,6 +129,7 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenTaskExecutionRequestedThenApprovedEmitted() {
+        // Given
         ObjectNode content = objectMapper.createObjectNode();
         ObjectNode activity = content.putObject("activity");
         activity.put("uuid", "activity-1");
@@ -169,11 +140,13 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
         task.put("uuid", "task-1");
         task.put("name", "deploy");
 
+        // When
         postNotification("ACTIVITY_TASK_EXECUTION_REQUESTED", content);
 
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient).notifyEvent(events.capture());
-        EmittedEventActivityTaskExecutionApprovedRes event = (EmittedEventActivityTaskExecutionApprovedRes) events.getValue();
+        // Then
+        assertThat(notifiedEvents()).singleElement().isInstanceOf(EmittedEventActivityTaskExecutionApprovedRes.class);
+        EmittedEventActivityTaskExecutionApprovedRes event =
+                (EmittedEventActivityTaskExecutionApprovedRes) notifiedEvents().get(0);
         assertThat(event.getEventContent().getActivity().getUuid()).isEqualTo("activity-1");
         assertThat(event.getEventContent().getActivity().getName()).isEqualTo("prod");
         assertThat(event.getEventContent().getActivity().getSortOrder()).isEqualTo(4);
@@ -194,12 +167,15 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenActivityApprovedThenRunningAndFirstTaskRequested() {
+        // Given
         ActivityRes created = executeTasks("dpv-approve", "prod", Map.of());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
+        // When
         postActivityApproved(created.getUuid());
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.RUNNING);
         assertThat(stored.getStartedAt()).isNotNull();
         List<EmittedEventActivityTaskExecutionRequestedRes> requests = capturedTaskRequests();
@@ -221,15 +197,18 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenActivityApprovedTwiceThenNotificationFailedAndUnchanged() {
+        // Given
         ActivityRes created = executeTasks("dpv-approve-twice", "prod", Map.of());
         postActivityApproved(created.getUuid());
         ActivityRes running = getActivity(created.getUuid());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
+        // When
         long sequenceId = postActivityApproved(created.getUuid());
 
-        verify(notificationClient).processingSuccess(sequenceId);
-        verify(notificationClient, never()).notifyEvent(any());
+        // Then
+        assertProcessingSucceeded(sequenceId);
+        assertThat(notifiedEvents()).isEmpty();
         ActivityRes after = getActivity(created.getUuid());
         assertThat(after.getStatus()).isEqualTo(running.getStatus());
         assertThat(after.getStartedAt()).isEqualTo(running.getStartedAt());
@@ -251,23 +230,28 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenAllTasksSucceedThenActivitySucceeded() {
-        ExecutorClient client = stubExecutor(
+        // Given
+        stubExecutor(
                 status("RUNNING"), status("SUCCEEDED"), status("RUNNING"), status("SUCCEEDED"),
                 "build log"
         );
         ActivityRes created = executeTasks("dpv-succeed", "prod", Map.of("region", "eu"));
+        // When
         postActivityApproved(created.getUuid());
-        clearInvocations(notificationClient);
+        clearNotifications();
         TaskRes first = taskBySortOrder(created, 0);
         TaskRes second = taskBySortOrder(created, 1);
 
         postTaskApproved(created.getUuid(), first.getUuid());
+        // Then
         assertThat(capturedTaskRequests()).singleElement().satisfies(event ->
                 assertThat(event.getEventContent().getTask().getUuid()).isEqualTo(second.getUuid())
         );
+        // When
         postTaskApproved(created.getUuid(), second.getUuid());
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
         assertThat(stored.getFinishedAt()).isNotNull();
         assertThat(stored.getTasks()).allSatisfy(task -> {
@@ -278,13 +262,10 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
             assertThat(task.getLogs()).hasSize(1);
             assertThat(task.getLogs().get(0).getContent()).isEqualTo("build log");
         });
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient, atLeastOnce()).notifyEvent(events.capture());
-        assertThat(events.getAllValues()).anyMatch(EmittedEventActivitySucceededRes.class::isInstance);
+        assertThat(notifiedEvents()).anyMatch(EmittedEventActivitySucceededRes.class::isInstance);
 
-        ArgumentCaptor<ExecutorTaskStartCommandRes> starts = ArgumentCaptor.forClass(ExecutorTaskStartCommandRes.class);
-        verify(client, times(2)).startTask(starts.capture());
-        assertThat(starts.getAllValues()).allSatisfy(command -> {
+        assertThat(executor().starts()).hasSize(2);
+        assertThat(executor().starts()).allSatisfy(command -> {
             assertThat(command.getExecutorParameters()).isNotNull();
             assertThat(command.getExecutorParameters().getDataProductRepo().getProviderType()).isEqualTo("GITHUB");
             assertThat(command.getPipelineParameters()).containsEntry("region", "eu");
@@ -302,15 +283,18 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenRunStillRunningThenStatusPolledUntilEnd() {
-        ExecutorClient client = stubExecutor(
+        // Given
+        stubExecutor(
                 status("RUNNING"), status("RUNNING"), status("RUNNING"), status("SUCCEEDED"),
                 "log"
         );
         ActivityRes created = executeOneTask("dpv-poll", "prod", null);
+        // When
         postActivityApproved(created.getUuid());
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
-        verify(client, times(4)).getTaskStatus(anyString());
+        // Then
+        assertThat(executor().statusReads()).isEqualTo(4);
         assertThat(getActivity(created.getUuid()).getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
     }
 
@@ -328,14 +312,17 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenTaskFailsThenActivityFailedAndRemainingCanceled() {
+        // Given
         stubExecutor(status("FAILED"), "failed log");
         ActivityRes created = executeTasks("dpv-fail", "prod", Map.of());
+        // When
         postActivityApproved(created.getUuid());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
         postTaskApproved(created.getUuid(), taskBySortOrder(created, 0).getUuid());
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
         TaskRes first = taskBySortOrder(stored, 0);
         TaskRes second = taskBySortOrder(stored, 1);
@@ -343,10 +330,8 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
         assertThat(second.getStatus()).isEqualTo(ExecutionStatus.CANCELED);
         assertThat(second.getFinishedAt()).isNotNull();
         assertThat(second.getStartedAt()).isNull();
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient, atLeastOnce()).notifyEvent(events.capture());
-        assertThat(events.getAllValues()).anyMatch(EmittedEventActivityFailedRes.class::isInstance);
-        assertThat(events.getAllValues()).noneMatch(EmittedEventActivityTaskExecutionRequestedRes.class::isInstance);
+        assertThat(notifiedEvents()).anyMatch(EmittedEventActivityFailedRes.class::isInstance);
+        assertThat(notifiedEvents()).noneMatch(EmittedEventActivityTaskExecutionRequestedRes.class::isInstance);
     }
 
     /**
@@ -359,11 +344,14 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenExecutorStatusUnknownThenTaskFailed() {
+        // Given
         stubExecutor(status("CANCELLED_BY_USER"), "log");
         ActivityRes created = executeOneTask("dpv-unknown-status", "prod", null);
+        // When
         postActivityApproved(created.getUuid());
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
+        // Then
         assertThat(getActivity(created.getUuid()).getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
     }
 
@@ -377,12 +365,15 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenLogBlankThenNoLogRow() {
+        // Given
         stubExecutor(status("SUCCEEDED"), "  ");
         ActivityRes created = executeOneTask("dpv-blank-log", "prod", null);
+        // When
         postActivityApproved(created.getUuid());
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
         TaskRes task = getActivity(created.getUuid()).getTasks().get(0);
+        // Then
         assertThat(task.getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
         assertThat(task.getLogs()).isNullOrEmpty();
     }
@@ -398,6 +389,7 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenTaskApprovedTwiceThenNotificationFailedAndExecutorNotCalled() {
+        // Given
         ActivityRes payload = namedActivity("dpv-task-twice", "prod");
         payload.setStatus(ExecutionStatus.RUNNING);
         TaskRes task = task("deploy", Map.of());
@@ -405,10 +397,12 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
         payload.setTasks(List.of(task));
         ActivityRes created = postActivity(payload);
 
+        // When
         long sequenceId = postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
-        verify(notificationClient).processingSuccess(sequenceId);
-        verify(executorClientFactory, never()).getExecutorClient(anyString(), anyString());
+        // Then
+        assertProcessingSucceeded(sequenceId);
+        assertThat(executor().openedExecutors()).isEmpty();
         assertThat(getActivity(created.getUuid()).getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
     }
 
@@ -424,16 +418,19 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenPlaceholderHasResultThenResolvedAndStoredUnchanged() {
+        // Given
         seedResult("dpv-placeholder", "dev", "deploy-infrastructure", "{\"endpoint\":\"https://x\"}", null);
-        ExecutorClient client = stubExecutor(status("SUCCEEDED"), "log");
+        stubExecutor(status("SUCCEEDED"), "log");
         Map<String, String> parameters = Map.of("infraEndpoint", "${dev.results.deploy-infrastructure.endpoint}");
         ActivityRes created = executeTasks("dpv-placeholder", "prod", parameters, "deploy");
+        // When
         postActivityApproved(created.getUuid());
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
-        ArgumentCaptor<ExecutorTaskStartCommandRes> starts = ArgumentCaptor.forClass(ExecutorTaskStartCommandRes.class);
-        verify(client).startTask(starts.capture());
-        assertThat(starts.getValue().getPipelineParameters()).containsEntry("infraEndpoint", "https://x");
+        // Then
+        assertThat(executor().starts()).singleElement().satisfies(command ->
+                assertThat(command.getPipelineParameters()).containsEntry("infraEndpoint", "https://x")
+        );
         assertThat(getActivity(created.getUuid()).getTasks().get(0).getPipelineParameters())
                 .containsEntry("infraEndpoint", "${dev.results.deploy-infrastructure.endpoint}");
     }
@@ -448,19 +445,22 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenPlaceholderUnresolvedThenSentUnchanged() {
-        ExecutorClient client = stubExecutor(status("SUCCEEDED"), "log");
+        // Given
+        stubExecutor(status("SUCCEEDED"), "log");
         ActivityRes created = executeTasks(
                 "dpv-unresolved",
                 "prod",
                 Map.of("p", "${dev.results.missing.value}"),
                 "deploy"
         );
+        // When
         postActivityApproved(created.getUuid());
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
-        ArgumentCaptor<ExecutorTaskStartCommandRes> starts = ArgumentCaptor.forClass(ExecutorTaskStartCommandRes.class);
-        verify(client).startTask(starts.capture());
-        assertThat(starts.getValue().getPipelineParameters()).containsEntry("p", "${dev.results.missing.value}");
+        // Then
+        assertThat(executor().starts()).singleElement().satisfies(command ->
+                assertThat(command.getPipelineParameters()).containsEntry("p", "${dev.results.missing.value}")
+        );
     }
 
     /**
@@ -473,18 +473,21 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenSeveralActivitiesWithNameThenLatestUsed() {
+        // Given
         ActivityRes older = seedResult("dpv-latest", "dev", "build", "{\"v\":\"old\"}", null);
         ActivityRes newer = seedResult("dpv-latest", "dev", "build", "{\"v\":\"new\"}", null);
-        setCreatedAt(older.getUuid(), "2020-01-01 00:00:00");
-        setCreatedAt(newer.getUuid(), "2024-01-01 00:00:00");
-        ExecutorClient client = stubExecutor(status("SUCCEEDED"), "log");
+        history.setActivityCreatedAt(older.getUuid(), "2020-01-01 00:00:00");
+        history.setActivityCreatedAt(newer.getUuid(), "2024-01-01 00:00:00");
+        stubExecutor(status("SUCCEEDED"), "log");
         ActivityRes created = executeTasks("dpv-latest", "prod", Map.of("p", "${dev.results.build.v}"), "deploy");
+        // When
         postActivityApproved(created.getUuid());
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
-        ArgumentCaptor<ExecutorTaskStartCommandRes> starts = ArgumentCaptor.forClass(ExecutorTaskStartCommandRes.class);
-        verify(client).startTask(starts.capture());
-        assertThat(starts.getValue().getPipelineParameters()).containsEntry("p", "new");
+        // Then
+        assertThat(executor().starts()).singleElement().satisfies(command ->
+                assertThat(command.getPipelineParameters()).containsEntry("p", "new")
+        );
     }
 
     /**
@@ -498,49 +501,29 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenUnknownEventTypeThenProcessed() {
-        long sequenceId = postNotification("SOMETHING_ELSE", objectMapper.createObjectNode());
+        // Given
+        ObjectNode content = objectMapper.createObjectNode();
 
-        verify(notificationClient).processingSuccess(sequenceId);
-        verify(notificationClient, never()).notifyEvent(any());
+        // When
+        long sequenceId = postNotification("SOMETHING_ELSE", content);
+
+        // Then
+        assertProcessingSucceeded(sequenceId);
+        assertThat(notifiedEvents()).isEmpty();
     }
 
-    private ExecutorClient stubExecutor(String logContent, ExecutorTaskStatusRes... statuses) {
-        return stubStatuses(logContent, statuses);
+    private void stubExecutor(String logContent, ExecutorTaskStatusRes... statuses) {
+        executor().statuses(statuses).logs(logContent);
     }
 
-    private ExecutorClient stubExecutor(ExecutorTaskStatusRes first, String logContent) {
-        return stubStatuses(logContent, first);
+    private void stubExecutor(ExecutorTaskStatusRes first, String logContent) {
+        executor().statuses(first).logs(logContent);
     }
 
-    private ExecutorClient stubExecutor(ExecutorTaskStatusRes first, ExecutorTaskStatusRes second,
-                                        ExecutorTaskStatusRes third, ExecutorTaskStatusRes fourth,
-                                        String logContent) {
-        return stubStatuses(logContent, first, second, third, fourth);
-    }
-
-    private ExecutorClient stubStatuses(String logContent, ExecutorTaskStatusRes... statuses) {
-        ExecutorClient client = mock(ExecutorClient.class);
-        when(executorClientFactory.getExecutorClient(eq("starter"), anyString())).thenReturn(client);
-        when(client.startTask(any())).thenAnswer(invocation -> {
-            ExecutorTaskStartResultRes result = new ExecutorTaskStartResultRes();
-            result.setProviderRunId("run-" + UUID.randomUUID());
-            return result;
-        });
-        when(client.getTaskStatus(anyString())).thenReturn(statuses[0], tail(statuses));
-        ExecutorTaskLogsRes logs = new ExecutorTaskLogsRes();
-        logs.setContent(logContent);
-        logs.setGeneratedAt(new Date(1_700_000_000_000L));
-        when(client.getTaskLogs(anyString())).thenReturn(logs);
-        return client;
-    }
-
-    private static ExecutorTaskStatusRes[] tail(ExecutorTaskStatusRes[] statuses) {
-        if (statuses.length == 1) {
-            return new ExecutorTaskStatusRes[]{statuses[0]};
-        }
-        ExecutorTaskStatusRes[] rest = new ExecutorTaskStatusRes[statuses.length - 1];
-        System.arraycopy(statuses, 1, rest, 0, rest.length);
-        return rest;
+    private void stubExecutor(ExecutorTaskStatusRes first, ExecutorTaskStatusRes second,
+                              ExecutorTaskStatusRes third, ExecutorTaskStatusRes fourth,
+                              String logContent) {
+        executor().statuses(first, second, third, fourth).logs(logContent);
     }
 
     private static ExecutorTaskStatusRes status(String value) {
@@ -611,14 +594,6 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
         return response.getBody();
     }
 
-    private void setCreatedAt(String uuid, String timestamp) {
-        jdbcTemplate.update(
-                "update " + schema + ".activities set created_at = ? where uuid = ?",
-                Timestamp.valueOf(timestamp),
-                uuid
-        );
-    }
-
     private long postActivityApproved(String activityUuid) {
         ObjectNode content = objectMapper.createObjectNode();
         content.putObject("activity").put("uuid", activityUuid);
@@ -662,9 +637,7 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
     }
 
     private List<EmittedEventActivityTaskExecutionRequestedRes> capturedTaskRequests() {
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient, atLeastOnce()).notifyEvent(events.capture());
-        return events.getAllValues().stream()
+        return notifiedEvents().stream()
                 .filter(EmittedEventActivityTaskExecutionRequestedRes.class::isInstance)
                 .map(EmittedEventActivityTaskExecutionRequestedRes.class::cast)
                 .toList();

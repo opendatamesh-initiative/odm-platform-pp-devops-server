@@ -76,7 +76,14 @@ class ExecuteActivity implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        createAndRequestExecution();
+        transactionalPort.doInTransaction(() -> {
+            refuseIfAnotherExecutionIsOpen();
+            prepareForExecution();
+            activity = persistencePort.create(activity);
+            secretsPort.storeExecutorSecrets(activity, fullControlExecutorNames);
+            notificationPort.emitActivityExecutionRequested(activity);
+            presenter.presentActivityExecutionRequested(activity);
+        });
     }
 
     private void validateCommand() {
@@ -182,17 +189,6 @@ class ExecuteActivity implements UseCase {
         } catch (Exception exception) {
             throw new BadRequestException("Task " + task.getName() + ": pipeline parameters are not valid JSON");
         }
-    }
-
-    private void createAndRequestExecution() {
-        transactionalPort.doInTransaction(() -> {
-            refuseIfAnotherExecutionIsOpen();
-            prepareForExecution();
-            activity = persistencePort.create(activity);
-            secretsPort.storeExecutorSecrets(activity, fullControlExecutorNames);
-            notificationPort.emitActivityExecutionRequested(activity);
-            presenter.presentActivityExecutionRequested(activity);
-        });
     }
 
     private void refuseIfAnotherExecutionIsOpen() {

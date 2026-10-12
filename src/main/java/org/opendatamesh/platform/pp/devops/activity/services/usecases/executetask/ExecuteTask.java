@@ -108,7 +108,7 @@ class ExecuteTask implements UseCase {
 
     private Task startTaskExecution() {
         return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findActivity(command.activityUuid());
+            Activity activity = persistencePort.findForUpdate(command.activityUuid());
             if (activity.getStatus() != ExecutionStatus.RUNNING) {
                 return null;
             }
@@ -146,7 +146,7 @@ class ExecuteTask implements UseCase {
     private void failRunningTask(Task task) {
         Timestamp finishedAt = now();
         boolean failed = Boolean.TRUE.equals(transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findActivity(task.getActivity().getUuid());
+            Activity activity = persistencePort.findForUpdate(task.getActivity().getUuid());
             Task persisted = findTask(activity, task.getUuid());
             if (persisted.getStatus() != ExecutionStatus.RUNNING) {
                 return false;
@@ -166,7 +166,7 @@ class ExecuteTask implements UseCase {
 
     private void recordProviderRunId(Task task, String providerRunId) {
         transactionalPort.doInTransaction(() -> {
-            Activity activity = persistencePort.findActivity(task.getActivity().getUuid());
+            Activity activity = persistencePort.findForUpdate(task.getActivity().getUuid());
             Task persisted = findTask(activity, task.getUuid());
             persisted.setProviderRunId(providerRunId);
             persistencePort.save(activity);
@@ -212,7 +212,7 @@ class ExecuteTask implements UseCase {
         Timestamp finishedAt = now();
         ExecutionStatus status = toExecutionStatus(runStatus);
         boolean recorded = Boolean.TRUE.equals(transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findActivity(task.getActivity().getUuid());
+            Activity activity = persistencePort.findForUpdate(task.getActivity().getUuid());
             Task persisted = findTask(activity, task.getUuid());
             if (persisted.getStatus() != ExecutionStatus.RUNNING) {
                 return false;

@@ -31,16 +31,15 @@ odm:
     policy-service:
       active: false
   utility-plane:
-    executor-services:
-      starter:
-        address: http://executor:9080
-        execution-mode: full-control
-      cli:
-        execution-mode: instrumented
-    executor-polling:
-      interval: 30s
-    executor-secrets:
-      ttl: 1h
+    executors:
+      polling-interval: 30s
+      secrets-ttl: 1h
+      services:
+        starter:
+          address: http://executor:9080
+          execution-mode: full-control
+        cli:
+          execution-mode: instrumented
 ```
 
 When Policy is **active**, set `odm.product-plane.policy-service.active: true`. DevOps still does not call Policy; an external service approves or rejects on the Notification bus. Keep Notification active for the event loop. With Notification inactive, an executed activity stays `PENDING`.
@@ -51,7 +50,7 @@ The image passes `SPRING_PROPS` through as extra JVM arguments. Use Spring's JSO
 
 ```bash
 docker run -p 8080:8080 \
-  -e SPRING_PROPS='-Dspring.application.json={"server":{"port":8080,"baseUrl":"https://devops.example.com"},"spring":{"datasource":{"url":"jdbc:postgresql://db:5432/odm_devops","username":"your_username","password":"your_password"},"jpa":{"properties":{"hibernate":{"default_schema":"odm_devops"}}}},"odm":{"product-plane":{"notification-service":{"address":"http://notification-service:8001","active":true},"policy-service":{"active":false}},"utility-plane":{"executor-services":{"starter":{"address":"http://executor:9080","execution-mode":"full-control"},"cli":{"execution-mode":"instrumented"}}}}}' \
+  -e SPRING_PROPS='-Dspring.application.json={"server":{"port":8080,"baseUrl":"https://devops.example.com"},"spring":{"datasource":{"url":"jdbc:postgresql://db:5432/odm_devops","username":"your_username","password":"your_password"},"jpa":{"properties":{"hibernate":{"default_schema":"odm_devops"}}}},"odm":{"product-plane":{"notification-service":{"address":"http://notification-service:8001","active":true},"policy-service":{"active":false}},"utility-plane":{"executors":{"polling-interval":"30s","secrets-ttl":"1h","services":{"starter":{"address":"http://executor:9080","execution-mode":"full-control"},"cli":{"execution-mode":"instrumented"}}}}}}' \
   odm-platform-pp-devops-server
 ```
 
@@ -156,18 +155,19 @@ Declare each executor by name and an execution mode of `full-control` or `instru
 
 | Property | Purpose | Manage when |
 | --- | --- | --- |
-| `odm.utility-plane.executor-services.<name>.execution-mode` | `full-control` or `instrumented` | **Must** for each executor you intend to use |
-| `odm.utility-plane.executor-services.<name>.address` | Base URL DevOps calls | **Must** for `full-control`. Optional for `instrumented`. DevOps calls a full-control address and does not call an instrumented address, whether that address is set or omitted. |
+| `odm.utility-plane.executors.services.<name>.execution-mode` | `full-control` or `instrumented` | **Must** for each executor you intend to use |
+| `odm.utility-plane.executors.services.<name>.address` | Base URL DevOps calls | **Must** for `full-control`. Optional for `instrumented`. DevOps calls a full-control address and does not call an instrumented address, whether that address is set or omitted. |
 
 ```yaml
 odm:
   utility-plane:
-    executor-services:
-      starter:
-        address: http://localhost:9080
-        execution-mode: full-control
-      cli:
-        execution-mode: instrumented
+    executors:
+      services:
+        starter:
+          address: http://localhost:9080
+          execution-mode: full-control
+        cli:
+          execution-mode: instrumented
 ```
 
 ### Full-control polling
@@ -176,15 +176,7 @@ DevOps polls a running full-control task until it ends. It does not poll an inst
 
 | Property | Purpose | Default |
 | --- | --- | --- |
-| `odm.utility-plane.executor-polling.interval` | Time between status reads | `30s` |
-
-Each running task holds one background thread for the whole run. The pool is bounded:
-
-| Property | Purpose | Default |
-| --- | --- | --- |
-| `spring.task.execution.pool.core-size` | Core pool size | `8` |
-| `spring.task.execution.pool.max-size` | Maximum pool size | `32` |
-| `spring.task.execution.pool.queue-capacity` | Queue capacity | `100` |
+| `odm.utility-plane.executors.polling-interval` | Time between status reads | `30s` |
 
 ## Secrets and parameters
 
@@ -192,7 +184,7 @@ On execute, a secret for one executor arrives as a request header named `x-odm-<
 
 | Property | Purpose | Default |
 | --- | --- | --- |
-| `odm.utility-plane.executor-secrets.ttl` | How long a secret stays in memory | `1h` |
+| `odm.utility-plane.executors.secrets-ttl` | How long a secret stays in memory | `1h` |
 
 Executor parameters and pipeline parameters are not secret. They are stored, returned, and included in events. Pipeline parameter values may contain placeholders; those are filled in only when a task is about to start.
 

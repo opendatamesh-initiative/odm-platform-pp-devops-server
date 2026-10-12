@@ -1,21 +1,15 @@
 package org.opendatamesh.platform.pp.devops.executor;
 
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
 
-import java.util.Set;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Executor declaration address rule.
  * Scenarios trace to {@code spdd/prompt/BDMD-5442-202610081454-[Feat]-service-instrumented-path.md}.
  */
 class ExecutorServicesPropertiesTest {
-
-    private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     /**
      * Feature: Executor address
@@ -27,12 +21,12 @@ class ExecutorServicesPropertiesTest {
      */
     @Test
     void whenInstrumentedAddressMissingThenValid() {
+        ExecutorServicesProperties properties = new ExecutorServicesProperties();
         ExecutorServicesProperties.ExecutorServiceProperties declaration = new ExecutorServicesProperties.ExecutorServiceProperties();
         declaration.setExecutionMode(ExecutionMode.INSTRUMENTED);
+        properties.getServices().put("cli", declaration);
 
-        Set<ConstraintViolation<ExecutorServicesProperties.ExecutorServiceProperties>> violations = validator.validate(declaration);
-
-        assertThat(violations).isEmpty();
+        assertThatCode(properties::validate).doesNotThrowAnyException();
     }
 
     /**
@@ -42,18 +36,18 @@ class ExecutorServicesPropertiesTest {
      *   Given a declaration whose execution-mode is full-control and whose address is blank
      *   When the declaration is validated
      *   Then it is invalid
-     *   And the message is "address is required when execution-mode is full-control"
+     *   And the message names the executor and says address is required when execution-mode is full-control
      */
     @Test
     void whenFullControlAddressMissingThenInvalid() {
+        ExecutorServicesProperties properties = new ExecutorServicesProperties();
         ExecutorServicesProperties.ExecutorServiceProperties declaration = new ExecutorServicesProperties.ExecutorServiceProperties();
         declaration.setExecutionMode(ExecutionMode.FULL_CONTROL);
         declaration.setAddress(" ");
+        properties.getServices().put("starter", declaration);
 
-        Set<ConstraintViolation<ExecutorServicesProperties.ExecutorServiceProperties>> violations = validator.validate(declaration);
-
-        assertThat(violations).isNotEmpty();
-        assertThat(violations).extracting(ConstraintViolation::getMessage)
-                .contains("address is required when execution-mode is full-control");
+        assertThatThrownBy(properties::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Executor starter: address is required when execution-mode is full-control");
     }
 }

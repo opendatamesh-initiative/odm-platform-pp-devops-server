@@ -139,6 +139,14 @@ Use this split:
 
 Do **not** hide policy in an adapter so `execute()` looks simpler. If a rule can change *what the system does* without a change to the use case, it was placed too low.
 
+### The port returns data. The use case decides the outcome.
+
+Business logic stays in the use case, not in the outbound port implementations.
+
+A query port returns rows. It does not throw because the list is empty or ambiguous, and it does not pick which row the caller may update.
+
+The same split covers every rule a reader of the procedure would recognize: which status is legal, which task may run next, when a later task is refused. Those checks throw from the use case. The adapter searches, loads, saves, and maps.
+
 ### Composed method (step-down)
 
 Write each method as a **short outline of the procedure at one level of abstraction**. Implement each outline item as a private method one level down. You should be able to narrate `execute()` (and each callee) without opening the next method.
@@ -148,6 +156,9 @@ Write each method as a **short outline of the procedure at one level of abstract
 - **Push details down; do not extract sideways.** Prefer private methods on the owner over extra public overloads, `*Helper` / `*Util` types, or unused parameters that only pass defaults.
 - **Same shape at every depth.** A parent that is “for each item, validate the item” has a child that lists that item’s checks — not the child’s nested conditionals inlined into the parent.
 - **Procedure stays in the use case; mechanics stay in adapters.** `execute()` is a business script through **intent-revealing ports**. Infrastructure and specification-model types do not appear in the use case class.
+- **`execute()` shows the procedure.** Do not move the whole body into one private method and leave `execute()` as `validateCommand()` plus that method.
+- **The transaction and the step calls stay in `execute()`.**
+- **A private method is one named step** (a check, a preparation, a resolve), not a wrapper for the entire use case.
 
 A private method exists when it is a **named step** in the parent’s story, not when it merely wraps a single `if`. Overloads that exist only to supply a default or a discarded argument hide the real procedure — collapse them.
 
@@ -181,6 +192,8 @@ The factory is the only place that chooses concrete port implementations for tha
 - **Transactional port:** Shared across use cases; do not reimplement transaction handling inside each use case—delegate to `TransactionalOutboundPort`.
 - **No Spring on port impls:** If a concern needs to be testable in isolation, use plain `new` in unit tests or test the factory with mocked collaborators—not `@MockBean` on the impl type as a bean.
 - **Composed method:** Port impls and shared services they call use the same step-down shape as §5: a public/port method is a high-level sequence of named private steps. They own implementation detail; they must not leak those steps back into the use case, and they must not own business policy that belongs in the use case.
+- **Outcome rules stay in the use case.** A query method returns the rows. Empty results, ambiguous results, and the choice of which row to update are use-case rules. See §5, "The port returns data. The use case decides the outcome."
+- **Unused methods come off the port.** If the use case never calls a method, delete it from the interface and the implementation. `findActivity` and `findForUpdate` are the usual pair: keep only the one `execute()` calls.
 
 ---
 

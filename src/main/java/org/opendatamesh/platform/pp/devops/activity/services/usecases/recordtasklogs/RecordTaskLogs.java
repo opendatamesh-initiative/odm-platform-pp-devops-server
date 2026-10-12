@@ -5,6 +5,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.activity.entities.TaskLog;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;
+import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
@@ -47,7 +48,23 @@ class RecordTaskLogs implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        appendLogs();
+        transactionalPort.doInTransaction(() -> {
+            List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionTag, activityName);
+            if (matches.isEmpty()) {
+                throw new NotFoundException("No PENDING or RUNNING activity " + activityName
+                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+            }
+            if (matches.size() > 1) {
+                throw new BadRequestException("More than one open activity " + activityName
+                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+            }
+            Activity activity = persistencePort.findForUpdate(matches.get(0).getUuid());
+            Task task = resolveTask(activity);
+            requireInstrumented(task);
+            requireRunning(task);
+            appendTo(task);
+            presenter.presentTaskLogsRecorded(persistencePort.save(activity));
+        });
     }
 
     private void validateCommand() {
@@ -89,17 +106,6 @@ class RecordTaskLogs implements UseCase {
         if (log.getGeneratedAt() == null) {
             log.setGeneratedAt(new Timestamp(System.currentTimeMillis()));
         }
-    }
-
-    private void appendLogs() {
-        transactionalPort.doInTransaction(() -> {
-            Activity activity = persistencePort.findOpenActivity(dataProductFqn, dataProductVersionTag, activityName);
-            Task task = resolveTask(activity);
-            requireInstrumented(task);
-            requireRunning(task);
-            appendTo(task);
-            presenter.presentTaskLogsRecorded(persistencePort.save(activity));
-        });
     }
 
     private void appendTo(Task task) {

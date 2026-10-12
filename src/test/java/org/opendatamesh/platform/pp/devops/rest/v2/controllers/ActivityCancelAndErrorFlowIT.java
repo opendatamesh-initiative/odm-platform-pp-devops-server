@@ -2,25 +2,16 @@ package org.opendatamesh.platform.pp.devops.rest.v2.controllers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.mockito.ArgumentCaptor;
-import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.GitRefType;
-import org.opendatamesh.platform.pp.devops.activity.repositories.ActivitiesRepository;
-import org.opendatamesh.platform.pp.devops.activity.services.core.ActivityService;
-import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClient;
-import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsRes;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
-import org.opendatamesh.platform.pp.devops.client.notification.NotificationClient;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
-import org.opendatamesh.platform.pp.devops.executor.ExecutorPollingProperties;
-import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsProperties;
+import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
+import org.opendatamesh.platform.pp.devops.rest.v2.ActivityHistoryFixture;
 import org.opendatamesh.platform.pp.devops.rest.v2.DevOpsApplicationIT;
 import org.opendatamesh.platform.pp.devops.rest.v2.RoutesV2;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.ErrorRes;
@@ -39,16 +30,17 @@ import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.usecases.e
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.notification.NotificationDispatchRes;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
-import java.sql.Timestamp;
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -57,19 +49,6 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.doCallRealMethod;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
  * Cancel, rejection, executor failure, and placeholder scenarios.
@@ -79,23 +58,16 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
 
     private static final String RUN_ID = "run-1";
 
-    @Autowired
-    private ActivitiesRepository activitiesRepository;
+
 
     @Autowired
-    private NotificationClient notificationClient;
+    private ExecutorServicesProperties executorServicesProperties;
 
     @Autowired
-    private ExecutorClientFactory executorClientFactory;
+    private ActivityHistoryFixture history;
 
     @Autowired
-    private ExecutorPollingProperties pollingProperties;
-
-    @Autowired
-    private ExecutorSecretsProperties secretsProperties;
-
-    @MockitoSpyBean
-    private ActivityService activityService;
+    private DataSource dataSource;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -108,8 +80,6 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
 
     @BeforeEach
     void resetState() {
-        activitiesRepository.deleteAll();
-        reset(notificationClient, executorClientFactory);
         sequence = 1L;
     }
 
@@ -124,11 +94,14 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenActivityAlreadySucceededThenCancelReturns400() {
+        // Given
         ActivityRes created = succeededActivity("dpv-already-succeeded", "prod");
         ActivityRes before = getActivity(created.getUuid());
 
+        // When
         ResponseEntity<ErrorRes> response = postCancelError(created.getUuid());
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().getMessage())
                 .isEqualTo("Activity " + created.getUuid() + " has already terminated with status SUCCEEDED");
@@ -156,11 +129,14 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenActivityPendingThenCancelClosesIt() {
+        // Given
         ActivityRes created = executeTasks("dpv-cancel-pending", "prod", Map.of());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
+        // When
         ActivityRes canceled = postCancel(created.getUuid());
 
+        // Then
         assertThat(canceled.getStatus()).isEqualTo(ExecutionStatus.CANCELED);
         assertThat(canceled.getFinishedAt()).isNotNull();
         assertThat(canceled.getStartedAt()).isNull();
@@ -169,7 +145,7 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
             assertThat(task.getFinishedAt()).isNotNull();
             assertThat(task.getStartedAt()).isNull();
         });
-        verify(executorClientFactory, never()).getExecutorClient(anyString(), anyString());
+        assertThat(executor().openedExecutors()).isEmpty();
         assertThat(capturedEvents()).anyMatch(EmittedEventActivityCanceledRes.class::isInstance);
         ActivityRes stored = getActivity(created.getUuid());
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.CANCELED);
@@ -179,29 +155,57 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      * Feature: Cancel an activity
      *
      * Scenario: A cancel that conflicts with another update returns 409
-     *   Given a cancel transaction conflicts with a concurrent update of the same activity
+     *   Given another transaction has updated the activity and has not committed
      *   When the user cancels the activity
      *   Then the response is 409
-     *   And DevOps does not retry the cancel
+     *   And the activity and its tasks stay PENDING
+     *   And a later cancel, after the other transaction ends, cancels the activity
      */
     @Test
-    public void whenCancelConflictsThenResponseIs409() {
+    public void whenCancelConflictsThenResponseIs409() throws Exception {
+        // Given
         ActivityRes created = executeTasks("dpv-cancel-conflict", "prod", Map.of());
-        clearInvocations(activityService);
-        doThrow(new CannotAcquireLockException("conflict"))
-                .when(activityService)
-                .overwrite(anyString(), any(Activity.class));
+        jdbcTemplate.execute("ALTER ROLE test SET lock_timeout = '1s'");
+        evictPooledConnections();
+        Connection holder = dataSource.getConnection();
         try {
+            holder.setAutoCommit(false);
+            try (Statement statement = holder.createStatement()) {
+                statement.execute("SET lock_timeout TO '0'");
+            }
+            try (PreparedStatement updateActivity = holder.prepareStatement(
+                    "UPDATE " + schema + ".activities SET updated_at = updated_at WHERE uuid = ?")) {
+                updateActivity.setString(1, created.getUuid());
+                assertThat(updateActivity.executeUpdate()).isEqualTo(1);
+            }
+            try (PreparedStatement updateTasks = holder.prepareStatement(
+                    "UPDATE " + schema + ".activities_tasks SET updated_at = updated_at WHERE activity_uuid = ?")) {
+                updateTasks.setString(1, created.getUuid());
+                assertThat(updateTasks.executeUpdate()).isEqualTo(created.getTasks().size());
+            }
+
+            // When
             ResponseEntity<ErrorRes> response = postCancelError(created.getUuid());
 
+            // Then
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-            verify(activityService, times(1)).overwrite(anyString(), any(Activity.class));
+            assertThat(response.getBody().getMessage())
+                    .isEqualTo("The resource is unavailable at the moment please retry");
             ActivityRes stored = getActivity(created.getUuid());
             assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.PENDING);
             assertThat(stored.getTasks()).allSatisfy(task -> assertThat(task.getStatus()).isEqualTo(ExecutionStatus.PENDING));
         } finally {
-            doCallRealMethod().when(activityService).overwrite(anyString(), any(Activity.class));
+            holder.rollback();
+            holder.close();
+            jdbcTemplate.execute("ALTER ROLE test RESET lock_timeout");
+            evictPooledConnections();
         }
+
+        // When
+        ActivityRes canceled = postCancel(created.getUuid());
+
+        // Then
+        assertThat(canceled.getStatus()).isEqualTo(ExecutionStatus.CANCELED);
     }
 
     /**
@@ -216,12 +220,15 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenActivityExecutionRejectedThenActivityFailed() {
+        // Given
         ActivityRes created = executeTasks("dpv-reject-activity", "prod", Map.of());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
+        // When
         postActivityRejected(created.getUuid());
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
         assertThat(stored.getStartedAt()).isNull();
         assertThat(stored.getFinishedAt()).isNotNull();
@@ -247,13 +254,16 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenTaskExecutionRejectedThenActivityFailed() {
+        // Given
         ActivityRes created = executeTasks("dpv-reject-task", "prod", Map.of());
+        // When
         postActivityApproved(created.getUuid());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
         postTaskRejected(created.getUuid(), taskBySortOrder(created, 0).getUuid());
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(taskBySortOrder(stored, 0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
         assertThat(taskBySortOrder(stored, 0).getStartedAt()).isNull();
         assertThat(taskBySortOrder(stored, 1).getStatus()).isEqualTo(ExecutionStatus.CANCELED);
@@ -273,14 +283,17 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenRejectedAfterCancelThenActivityUnchanged() {
+        // Given
         ActivityRes created = executeTasks("dpv-reject-after-cancel", "prod", Map.of());
         postCancel(created.getUuid());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
+        // When
         long sequenceId = postActivityRejected(created.getUuid());
 
-        verify(notificationClient).processingSuccess(sequenceId);
-        verify(notificationClient, never()).notifyEvent(any());
+        // Then
+        assertProcessingSucceeded(sequenceId);
+        assertThat(notifiedEvents()).isEmpty();
         assertThat(getActivity(created.getUuid()).getStatus()).isEqualTo(ExecutionStatus.CANCELED);
     }
 
@@ -295,18 +308,21 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenStartThrowsThenActivityFailed() {
-        ExecutorClient client = stubExecutor(status("SUCCEEDED"), "log");
-        when(client.startTask(any())).thenThrow(new RuntimeException("start failed"));
+        // Given
+        stubExecutor(status("SUCCEEDED"), "log");
+        executor().startThrows(new RuntimeException("start failed"));
         ActivityRes created = executeOneTask("dpv-start-throws", "prod");
+        // When
         postActivityApproved(created.getUuid());
 
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(stored.getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
         assertThat(stored.getTasks().get(0).getStatus()).isNotEqualTo(ExecutionStatus.RUNNING);
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
-        verify(client, never()).getTaskStatus(anyString());
+        assertThat(executor().statusReads()).isZero();
     }
 
     /**
@@ -320,14 +336,17 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenLogReadThrowsThenCanceledOutcomeIsRecorded() {
-        ExecutorClient client = stubExecutor(status("CANCELED"), "log");
-        when(client.getTaskLogs(anyString())).thenThrow(new ClientException(500, "log body must not be required"));
+        // Given
+        stubExecutor(status("CANCELED"), "log");
+        executor().logsThrow(new ClientException(500, "log body must not be required"));
         ActivityRes created = executeOneTask("dpv-log-throws", "prod");
+        // When
         postActivityApproved(created.getUuid());
 
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(stored.getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.CANCELED);
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.CANCELED);
     }
@@ -343,24 +362,26 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     public void whenStatusPollReachesCapThenActivityFailed() {
-        Duration previousInterval = pollingProperties.getInterval();
-        Duration previousTtl = secretsProperties.getTtl();
-        pollingProperties.setInterval(Duration.ofMillis(1));
-        secretsProperties.setTtl(Duration.ofMillis(3));
+        // Given
+        Duration previousInterval = executorServicesProperties.getPollingInterval();
+        Duration previousTtl = executorServicesProperties.getTtl();
+        executorServicesProperties.setPollingInterval(Duration.ofMillis(1));
+        executorServicesProperties.setSecretsTtl(Duration.ofMillis(3));
+        // When
         try {
-            ExecutorClient client = stubExecutor(status("RUNNING"), "log");
+            stubExecutor(status("RUNNING"), "log");
             ActivityRes created = executeOneTask("dpv-poll-cap", "prod");
             postActivityApproved(created.getUuid());
 
             postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
-            verify(client, times(3)).getTaskStatus(anyString());
+            assertThat(executor().statusReads()).isEqualTo(3);
             ActivityRes stored = getActivity(created.getUuid());
             assertThat(stored.getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
             assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
         } finally {
-            pollingProperties.setInterval(previousInterval);
-            secretsProperties.setTtl(previousTtl);
+            executorServicesProperties.setPollingInterval(previousInterval);
+            executorServicesProperties.setSecretsTtl(previousTtl);
         }
     }
 
@@ -374,40 +395,27 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCanceledTaskHasResultsThenSucceededValueIsUsed() {
+        // Given
         seedSucceededAndLaterCanceled("dpv-ignore-canceled", "dev", "deploy-infrastructure");
-        ExecutorClient client = stubExecutor(status("SUCCEEDED"), "log");
+        stubExecutor(status("SUCCEEDED"), "log");
         ActivityRes created = executeTasks(
                 "dpv-ignore-canceled",
                 "prod",
                 Map.of("infraEndpoint", "${dev.results.deploy-infrastructure.endpoint}"),
                 "deploy"
         );
+        // When
         postActivityApproved(created.getUuid());
         postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
 
-        ArgumentCaptor<ExecutorTaskStartCommandRes> starts = ArgumentCaptor.forClass(ExecutorTaskStartCommandRes.class);
-        verify(client).startTask(starts.capture());
-        assertThat(starts.getValue().getPipelineParameters()).containsEntry("infraEndpoint", "https://from-succeeded");
+        // Then
+        assertThat(executor().starts()).singleElement().satisfies(command ->
+                assertThat(command.getPipelineParameters()).containsEntry("infraEndpoint", "https://from-succeeded")
+        );
     }
 
-    private ExecutorClient stubExecutor(ExecutorTaskStatusRes status, String logContent) {
-        ExecutorClient client = mock(ExecutorClient.class);
-        when(executorClientFactory.getExecutorClient(eq("starter"), anyString())).thenReturn(client);
-        when(client.startTask(any())).thenAnswer(invocation -> {
-            ExecutorTaskStartResultRes result = new ExecutorTaskStartResultRes();
-            result.setProviderRunId(RUN_ID);
-            return result;
-        });
-        when(client.getTaskStatus(anyString())).thenReturn(status);
-        when(client.getTaskLogs(anyString())).thenReturn(log(logContent));
-        return client;
-    }
-
-    private static ExecutorTaskLogsRes log(String content) {
-        ExecutorTaskLogsRes logs = new ExecutorTaskLogsRes();
-        logs.setContent(content);
-        logs.setGeneratedAt(new Date(1_700_000_000_000L));
-        return logs;
+    private void stubExecutor(ExecutorTaskStatusRes status, String logContent) {
+        executor().statuses(status).logs(logContent).startRunId(RUN_ID);
     }
 
     private static ExecutorTaskStatusRes status(String value) {
@@ -430,6 +438,10 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
                 ExecutionStatus.CANCELED
         );
         return response.getBody().getActivity();
+    }
+
+    private void evictPooledConnections() {
+        ((HikariDataSource) dataSource).getHikariPoolMXBean().softEvictConnections();
     }
 
     private ResponseEntity<ErrorRes> postCancelError(String activityUuid) {
@@ -509,8 +521,8 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
                 .findFirst()
                 .orElseThrow()
                 .getUuid();
-        setTaskCreatedAt(succeededUuid, "2020-01-01 00:00:00");
-        setTaskCreatedAt(canceledUuid, "2024-01-01 00:00:00");
+        history.setTaskCreatedAt(succeededUuid, "2020-01-01 00:00:00");
+        history.setTaskCreatedAt(canceledUuid, "2024-01-01 00:00:00");
     }
 
     private ActivityRes postActivity(ActivityRes activity) {
@@ -521,14 +533,6 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
         );
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         return response.getBody();
-    }
-
-    private void setTaskCreatedAt(String uuid, String timestamp) {
-        jdbcTemplate.update(
-                "update " + schema + ".activities_tasks set created_at = ? where uuid = ?",
-                Timestamp.valueOf(timestamp),
-                uuid
-        );
     }
 
     private long postActivityApproved(String activityUuid) {
@@ -587,9 +591,7 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
     }
 
     private List<Object> capturedEvents() {
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient, atLeastOnce()).notifyEvent(events.capture());
-        return events.getAllValues();
+        return notifiedEvents();
     }
 
     private static TaskRes taskBySortOrder(ActivityRes activity, int sortOrder) {

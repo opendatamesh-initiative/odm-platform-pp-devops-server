@@ -67,7 +67,7 @@ docker run --name odm-devops -p 8080:8080 \
 
 ```bash
 docker run --name odm-devops -p 8080:8080 \
-  -e SPRING_PROPS='-Dspring.application.json={"server":{"baseUrl":"https://devops.example.com"},"spring":{"datasource":{"url":"jdbc:postgresql://db:5432/odm_devops","username":"your_username","password":"your_password"},"jpa":{"properties":{"hibernate":{"default_schema":"odm_devops"}}}},"odm":{"product-plane":{"notification-service":{"address":"http://notification-service:8001","active":true},"policy-service":{"active":false}},"utility-plane":{"executor-services":{"starter":{"address":"http://executor:9080","execution-mode":"full-control"},"cli":{"execution-mode":"instrumented"}}}}}' \
+  -e SPRING_PROPS='-Dspring.application.json={"server":{"baseUrl":"https://devops.example.com"},"spring":{"datasource":{"url":"jdbc:postgresql://db:5432/odm_devops","username":"your_username","password":"your_password"},"jpa":{"properties":{"hibernate":{"default_schema":"odm_devops"}}}},"odm":{"product-plane":{"notification-service":{"address":"http://notification-service:8001","active":true},"policy-service":{"active":false}},"utility-plane":{"executors":{"polling-interval":"30s","secrets-ttl":"1h","services":{"starter":{"address":"http://executor:9080","execution-mode":"full-control"},"cli":{"execution-mode":"instrumented"}}}}}}' \
   opendatamesh/odm-platform-devops:<tag>
 ```
 

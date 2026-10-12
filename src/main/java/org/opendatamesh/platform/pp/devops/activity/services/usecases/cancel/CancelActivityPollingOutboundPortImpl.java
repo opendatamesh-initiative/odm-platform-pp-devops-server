@@ -1,8 +1,7 @@
 package org.opendatamesh.platform.pp.devops.activity.services.usecases.cancel;
 
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
-import org.opendatamesh.platform.pp.devops.executor.ExecutorPollingProperties;
-import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsProperties;
+import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
 
 import java.time.Duration;
 
@@ -10,23 +9,20 @@ class CancelActivityPollingOutboundPortImpl implements CancelActivityPollingOutb
 
     private static final Duration ONE_SECOND = Duration.ofSeconds(1);
 
-    private final ExecutorPollingProperties pollingProperties;
-    private final ExecutorSecretsProperties secretsProperties;
+    private final ExecutorServicesProperties executorServicesProperties;
 
-    CancelActivityPollingOutboundPortImpl(ExecutorPollingProperties pollingProperties,
-                                          ExecutorSecretsProperties secretsProperties) {
-        this.pollingProperties = pollingProperties;
-        this.secretsProperties = secretsProperties;
+    CancelActivityPollingOutboundPortImpl(ExecutorServicesProperties executorServicesProperties) {
+        this.executorServicesProperties = executorServicesProperties;
     }
 
     @Override
     public int maxStatusReads() {
-        return pollingProperties.maxStatusReads(secretsProperties.getTtl());
+        return executorServicesProperties.maxStatusReads(executorServicesProperties.getTtl());
     }
 
     @Override
     public void waitOnePollInterval() {
-        sleep(pollingProperties.getInterval().toMillis());
+        sleep(executorServicesProperties.getPollingInterval().toMillis());
     }
 
     @Override

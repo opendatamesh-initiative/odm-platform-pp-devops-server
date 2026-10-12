@@ -5,15 +5,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.mockito.ArgumentCaptor;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.GitRefType;
-import org.opendatamesh.platform.pp.devops.activity.repositories.ActivitiesRepository;
-import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClient;
-import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
-import org.opendatamesh.platform.pp.devops.client.notification.NotificationClient;
 import org.opendatamesh.platform.pp.devops.rest.v2.DevOpsApplicationIT;
 import org.opendatamesh.platform.pp.devops.rest.v2.RoutesV2;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.ErrorRes;
@@ -50,17 +43,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
  * Instrumented path, mixed hand-off, shared results, and cancel.
@@ -70,22 +52,13 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
 
     private static final String NOT_RUNNING = " is not RUNNING";
 
-    @Autowired
-    private ActivitiesRepository activitiesRepository;
 
-    @Autowired
-    private NotificationClient notificationClient;
-
-    @Autowired
-    private ExecutorClientFactory executorClientFactory;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private long sequence = 1L;
 
     @BeforeEach
     void resetState() {
-        activitiesRepository.deleteAll();
-        reset(notificationClient, executorClientFactory);
         sequence = 1L;
     }
 
@@ -101,12 +74,15 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenActivityApprovedThenInstrumentedTaskStaysPending() {
+        // Given
         ActivityRes created = executeNamed("dpv-approve-cli", "deploy");
-        clearInvocations(notificationClient);
+        clearNotifications();
 
+        // When
         postActivityApproved(created.getUuid());
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.RUNNING);
         assertThat(taskByName(stored, "deploy").getStatus()).isEqualTo(ExecutionStatus.PENDING);
         assertNoTaskExecutionRequested();
@@ -123,18 +99,21 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenApprovedThenLaterFullControlTaskIsNotRequested() {
+        // Given
         ActivityRes created = executeTasks(
                 "dpv-approve-later-fc",
                 List.of(cliTask("deploy"), cliTask("publish"), starterTask("finish"))
         );
 
+        // When
         postActivityApproved(created.getUuid());
 
         String finishUuid = taskByName(created, "finish").getUuid();
-        verify(notificationClient, never()).notifyEvent(argThat(event ->
+        // Then
+        assertThat(notifiedEvents()).noneMatch(event ->
                 event instanceof EmittedEventActivityTaskExecutionRequestedRes requested
                         && finishUuid.equals(requested.getEventContent().getTask().getUuid())
-        ));
+        );
         assertCliExecutorNotOpened();
     }
 
@@ -153,20 +132,25 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenRequestTaskExecutionThenApprovalSetsRunningWithoutExecutor() {
+        // Given
         ActivityRes created = runningActivity("dpv-request", "deploy");
-        clearInvocations(notificationClient);
+        clearNotifications();
 
+        // When
         ResponseEntity<ActivityTaskCommandResultRes> response = requestExecution(created, "deploy", "run-1");
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         TaskRes requested = taskByName(response.getBody().getActivity(), "deploy");
         assertThat(requested.getStatus()).isEqualTo(ExecutionStatus.PENDING);
         assertThat(requested.getProviderRunId()).isEqualTo("run-1");
         assertThat(capturedTaskRequests()).hasSize(1);
 
+        // When
         postTaskApproved(created.getUuid(), requested.getUuid());
 
         TaskRes running = taskByName(getActivity(created.getUuid()), "deploy");
+        // Then
         assertThat(running.getStatus()).isEqualTo(ExecutionStatus.RUNNING);
         assertThat(running.getProviderRunId()).isEqualTo("run-1");
         assertCliExecutorNotOpened();
@@ -183,6 +167,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenRequestBeforeActivityRunningThenBadRequest() {
+        // Given
         ActivityRes created = executeNamed("dpv-request-early", "deploy");
 
         ResponseEntity<ErrorRes> response = requestExecutionError(created, "deploy", "run-1");
@@ -204,11 +189,14 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenRequestFullControlTaskThenBadRequest() {
+        // Given
         ActivityRes created = executeTasks("dpv-request-fc", List.of(starterTask("deploy")));
+        // When
         postActivityApproved(created.getUuid());
 
         ResponseEntity<ErrorRes> response = requestExecutionError(created, "deploy", "run-1");
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().getMessage()).isEqualTo("Task deploy is not instrumented");
         assertThat(taskByName(getActivity(created.getUuid()), "deploy").getStatus()).isEqualTo(ExecutionStatus.PENDING);
@@ -226,6 +214,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenTaskNameMissingThenBadRequest() {
+        // Given
         ActivityRes created = runningActivity("dpv-missing", "deploy");
 
         ResponseEntity<ErrorRes> response = requestExecutionError(created, "missing", "run-1");
@@ -247,11 +236,14 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenTaskNameDuplicatedThenBadRequest() {
+        // Given
         ActivityRes created = executeTasks("dpv-duplicate", List.of(cliTask("deploy"), cliTask("deploy")));
+        // When
         postActivityApproved(created.getUuid());
 
         ResponseEntity<ErrorRes> response = requestExecutionError(created, "deploy", "run-1");
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().getMessage())
                 .isEqualTo("Task deploy matches more than one task in activity " + created.getUuid());
@@ -272,12 +264,15 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenRequestRepeatedWhilePendingThenProviderRunIdReplaced() {
+        // Given
         ActivityRes created = runningActivity("dpv-repeat-request", "deploy");
-        clearInvocations(notificationClient);
+        clearNotifications();
+        // When
         requestExecution(created, "deploy", "run-1");
 
         ResponseEntity<ActivityTaskCommandResultRes> response = requestExecution(created, "deploy", "run-2");
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         TaskRes requested = taskByName(response.getBody().getActivity(), "deploy");
         assertThat(requested.getProviderRunId()).isEqualTo("run-2");
@@ -285,10 +280,12 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
         assertThat(capturedTaskRequests()).hasSize(2);
         String taskUuid = requested.getUuid();
 
+        // When
         postTaskApproved(created.getUuid(), taskUuid);
         postTaskApproved(created.getUuid(), taskUuid);
 
         TaskRes running = taskByName(getActivity(created.getUuid()), "deploy");
+        // Then
         assertThat(running.getStatus()).isEqualTo(ExecutionStatus.RUNNING);
         assertThat(running.getProviderRunId()).isEqualTo("run-2");
         assertCliExecutorNotOpened();
@@ -309,12 +306,15 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenLaterPendingTaskRequestedThenNextTaskRefused() {
+        // Given
         ActivityRes created = executeTasks("dpv-later-pending", List.of(cliTask("deploy"), cliTask("publish")));
+        // When
         postActivityApproved(created.getUuid());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
         ResponseEntity<ErrorRes> response = requestExecutionError(created, "publish", "run-2");
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().getMessage())
                 .isEqualTo("Task publish is not the next task. Task deploy is still PENDING");
@@ -337,14 +337,17 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenNextTaskRequestedWhileAnotherIsRunningThenRefused() {
+        // Given
         ActivityRes created = executeTasks("dpv-while-running", List.of(cliTask("deploy"), cliTask("publish")));
+        // When
         postActivityApproved(created.getUuid());
         requestExecution(created, "deploy", "run-1");
         postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
         ResponseEntity<ErrorRes> response = requestExecutionError(created, "publish", "run-2");
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().getMessage())
                 .isEqualTo("Task publish cannot be requested while task deploy is RUNNING");
@@ -368,8 +371,9 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenReportsThenTerminalStatusClosesTheActivity() {
+        // Given
         ActivityRes created = runningTask("dpv-report", "deploy", "run-1");
-        clearInvocations(notificationClient);
+        clearNotifications();
 
         ResponseEntity<ActivityTaskCommandResultRes> logs = postLogs(created, "deploy", "build log");
         ResponseEntity<ActivityTaskCommandResultRes> results = postResults(created, "deploy", "saved-result");
@@ -381,15 +385,15 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
         assertThat(afterResults.getLogs()).extracting(TaskLogRes::getContent).contains("build log");
         assertThat(afterResults.getResults()).extracting(TaskResultRes::getContent).contains("saved-result");
 
+        // When
         ResponseEntity<ActivityTaskCommandResultRes> status = postStatus(created, "deploy", ExecutionStatus.SUCCEEDED);
 
+        // Then
         assertThat(status.getStatusCode()).isEqualTo(HttpStatus.OK);
         ActivityRes closed = status.getBody().getActivity();
         assertThat(closed.getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
         assertThat(taskByName(closed, "deploy").getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient).notifyEvent(events.capture());
-        assertThat(events.getAllValues()).anyMatch(EmittedEventActivitySucceededRes.class::isInstance);
+        assertThat(notifiedEvents()).singleElement().isInstanceOf(EmittedEventActivitySucceededRes.class);
         assertCliExecutorNotOpened();
     }
 
@@ -404,6 +408,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenReportWhileNotRunningThenBadRequest() {
+        // Given
         ActivityRes created = runningActivity("dpv-report-early", "deploy");
         String message = "Task deploy" + NOT_RUNNING;
 
@@ -432,7 +437,9 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenSecondTerminalStatusThenBadRequest() {
+        // Given
         ActivityRes created = executeTasks("dpv-second-status", List.of(cliTask("deploy"), cliTask("publish")));
+        // When
         postActivityApproved(created.getUuid());
         requestExecution(created, "deploy", "run-1");
         postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
@@ -440,6 +447,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
 
         ResponseEntity<ErrorRes> response = postStatusError(created, "deploy", ExecutionStatus.SUCCEEDED);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().getMessage()).isEqualTo("Task deploy" + NOT_RUNNING);
         assertCliExecutorNotOpened();
@@ -456,6 +464,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenLogRepeatedWhileRunningThenAnotherRowStored() {
+        // Given
         ActivityRes created = runningTask("dpv-repeat-log", "deploy", "run-1");
         postLogs(created, "deploy", "build log");
 
@@ -480,13 +489,16 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenInstrumentedTaskFailsThenLaterPendingTasksCanceled() {
+        // Given
         ActivityRes created = executeTasks("dpv-fail-cli", List.of(cliTask("deploy"), cliTask("publish")));
+        // When
         postActivityApproved(created.getUuid());
         requestExecution(created, "deploy", "run-1");
         postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
 
         ResponseEntity<ActivityTaskCommandResultRes> response = postStatus(created, "deploy", ExecutionStatus.FAILED);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         ActivityRes failed = response.getBody().getActivity();
         assertThat(failed.getStatus()).isEqualTo(ExecutionStatus.FAILED);
@@ -506,10 +518,13 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenInstrumentedTaskCanceledThenActivityCanceled() {
+        // Given
         ActivityRes created = runningTask("dpv-cancel-status", "deploy", "run-1");
 
+        // When
         ResponseEntity<ActivityTaskCommandResultRes> response = postStatus(created, "deploy", ExecutionStatus.CANCELED);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getActivity().getStatus()).isEqualTo(ExecutionStatus.CANCELED);
         assertThat(taskByName(response.getBody().getActivity(), "deploy").getStatus()).isEqualTo(ExecutionStatus.CANCELED);
@@ -528,14 +543,17 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenInstrumentedThenFullControlThenSecondTaskRequested() {
+        // Given
         ActivityRes created = executeTasks("dpv-cli-then-fc", List.of(cliTask("deploy"), starterTask("publish")));
+        // When
         postActivityApproved(created.getUuid());
         requestExecution(created, "deploy", "run-1");
         postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
         ResponseEntity<ActivityTaskCommandResultRes> response = postStatus(created, "deploy", ExecutionStatus.SUCCEEDED);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(taskByName(response.getBody().getActivity(), "publish").getStatus()).isEqualTo(ExecutionStatus.PENDING);
         assertThat(capturedTaskRequests()).singleElement().satisfies(event ->
@@ -555,14 +573,17 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenFullControlThenInstrumentedThenSecondTaskStaysPending() {
+        // Given
         stubSucceededExecutor();
         ActivityRes created = executeTasks("dpv-fc-then-cli", List.of(starterTask("deploy"), cliTask("report")));
+        // When
         postActivityApproved(created.getUuid());
-        clearInvocations(notificationClient);
+        clearNotifications();
 
         postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(taskByName(stored, "deploy").getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
         assertThat(taskByName(stored, "report").getStatus()).isEqualTo(ExecutionStatus.PENDING);
         assertNoTaskExecutionRequested();
@@ -582,10 +603,12 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
     @Test
     @Timeout(value = 40, unit = TimeUnit.SECONDS)
     public void whenFullControlTaskRunningThenResultsRemainAfterSuccess() throws Exception {
+        // Given
         CountDownLatch statusEntered = new CountDownLatch(1);
         CountDownLatch releaseStatus = new CountDownLatch(1);
         stubHeldStatus(statusEntered, releaseStatus);
         ActivityRes created = executeTasks("dpv-fc-results", List.of(starterTask("deploy")));
+        // When
         postActivityApproved(created.getUuid());
         AtomicReference<Throwable> failure = new AtomicReference<>();
         Thread approval = new Thread(() -> {
@@ -607,6 +630,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
             approval.join(20_000);
         }
 
+        // Then
         assertThat(failure.get()).isNull();
         assertThat(approval.isAlive()).isFalse();
         TaskRes finished = taskByName(getActivity(created.getUuid()), "deploy");
@@ -627,16 +651,19 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCancelPendingInstrumentedThenActivityCanceled() {
+        // Given
         ActivityRes created = executeTasks("dpv-cancel-pending-cli", List.of(cliTask("deploy"), cliTask("publish")));
+        // When
         postActivityApproved(created.getUuid());
 
         ResponseEntity<ActivityCancelResultRes> response = postCancel(created.getUuid());
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         ActivityRes canceled = response.getBody().getActivity();
         assertThat(canceled.getStatus()).isEqualTo(ExecutionStatus.CANCELED);
         assertThat(canceled.getTasks()).allSatisfy(task -> assertThat(task.getStatus()).isEqualTo(ExecutionStatus.CANCELED));
-        verify(executorClientFactory, never()).getExecutorClient(anyString(), anyString());
+        assertThat(executor().openedExecutors()).isEmpty();
     }
 
     /**
@@ -654,7 +681,9 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
     @Test
     @Timeout(value = 40, unit = TimeUnit.SECONDS)
     public void whenCancelRunningInstrumentedThenWaitsForCliStatus() throws Exception {
+        // Given
         ActivityRes created = executeTasks("dpv-cancel-running-cli", List.of(cliTask("deploy"), cliTask("publish")));
+        // When
         postActivityApproved(created.getUuid());
         requestExecution(created, "deploy", "run-1");
         postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
@@ -684,6 +713,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
             }
         }
 
+        // Then
         assertThat(failure.get()).isNull();
         assertThat(cancelThread.isAlive()).isFalse();
         assertThat(response.get().getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -705,15 +735,18 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenEarlierInstrumentedTaskTerminalThenNextTaskCanBeRequested() {
+        // Given
         ActivityRes created = executeTasks("dpv-next-after-terminal", List.of(cliTask("deploy"), cliTask("publish")));
+        // When
         postActivityApproved(created.getUuid());
         requestExecution(created, "deploy", "run-1");
         postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
         postStatus(created, "deploy", ExecutionStatus.SUCCEEDED);
-        clearInvocations(notificationClient);
+        clearNotifications();
 
         ResponseEntity<ActivityTaskCommandResultRes> response = requestExecution(created, "publish", "run-2");
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         TaskRes next = taskByName(response.getBody().getActivity(), "publish");
         assertThat(next.getStatus()).isEqualTo(ExecutionStatus.PENDING);
@@ -733,13 +766,16 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenTaskExecutionRejectedThenActivityFailed() {
+        // Given
         ActivityRes created = runningActivity("dpv-reject-cli", "deploy");
+        // When
         requestExecution(created, "deploy", "run-1");
         String taskUuid = taskByName(getActivity(created.getUuid()), "deploy").getUuid();
 
         postTaskRejected(created.getUuid(), taskUuid);
 
         ActivityRes stored = getActivity(created.getUuid());
+        // Then
         assertThat(taskByName(stored, "deploy").getStatus()).isEqualTo(ExecutionStatus.FAILED);
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
         assertCliExecutorNotOpened();
@@ -935,59 +971,26 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
     }
 
     private void stubSucceededExecutor() {
-        ExecutorClient client = mock(ExecutorClient.class);
-        when(executorClientFactory.getExecutorClient(eq("starter"), anyString())).thenReturn(client);
-        when(client.startTask(any())).thenAnswer(invocation -> {
-            ExecutorTaskStartResultRes result = new ExecutorTaskStartResultRes();
-            result.setProviderRunId("run-starter");
-            return result;
-        });
-        ExecutorTaskStatusRes status = new ExecutorTaskStatusRes();
-        status.setStatus("SUCCEEDED");
-        when(client.getTaskStatus(anyString())).thenReturn(status);
+        executor().startRunId("run-starter");
     }
 
     private void stubHeldStatus(CountDownLatch entered, CountDownLatch release) {
-        ExecutorClient client = mock(ExecutorClient.class);
-        when(executorClientFactory.getExecutorClient(eq("starter"), anyString())).thenReturn(client);
-        when(client.startTask(any())).thenAnswer(invocation -> {
-            ExecutorTaskStartResultRes result = new ExecutorTaskStartResultRes();
-            result.setProviderRunId("run-held");
-            return result;
-        });
-        when(client.getTaskStatus(anyString())).thenAnswer(invocation -> {
-            entered.countDown();
-            try {
-                if (!release.await(30, TimeUnit.SECONDS)) {
-                    throw new IllegalStateException("status read was not released");
-                }
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Interrupted while holding the status read", interrupted);
-            }
-            ExecutorTaskStatusRes status = new ExecutorTaskStatusRes();
-            status.setStatus("SUCCEEDED");
-            return status;
-        });
+        executor().startRunId("run-held").holdStatus(entered, release);
     }
 
     private List<EmittedEventActivityTaskExecutionRequestedRes> capturedTaskRequests() {
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient, atLeastOnce()).notifyEvent(events.capture());
-        return events.getAllValues().stream()
+        return notifiedEvents().stream()
                 .filter(EmittedEventActivityTaskExecutionRequestedRes.class::isInstance)
                 .map(EmittedEventActivityTaskExecutionRequestedRes.class::cast)
                 .toList();
     }
 
     private void assertNoTaskExecutionRequested() {
-        verify(notificationClient, never()).notifyEvent(argThat(
-                EmittedEventActivityTaskExecutionRequestedRes.class::isInstance
-        ));
+        assertThat(notifiedEvents()).noneMatch(EmittedEventActivityTaskExecutionRequestedRes.class::isInstance);
     }
 
     private void assertCliExecutorNotOpened() {
-        verify(executorClientFactory, never()).getExecutorClient(eq("cli"), anyString());
+        assertThat(executor().openedExecutors()).doesNotContain("cli");
     }
 
     private static ActivityTaskExecutionRequestCommandRes requestCommand(ActivityRes activity, String taskName, String providerRunId) {

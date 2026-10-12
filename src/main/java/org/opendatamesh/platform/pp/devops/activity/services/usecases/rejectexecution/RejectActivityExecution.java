@@ -52,7 +52,7 @@ class RejectActivityExecution implements UseCase {
 
     private Activity rejectPendingActivity() {
         return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findActivity(command.activityUuid());
+            Activity activity = persistencePort.findForUpdate(command.activityUuid());
             if (activity.getStatus() != ExecutionStatus.PENDING) {
                 return null;
             }

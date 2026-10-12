@@ -25,7 +25,7 @@ class CancelActivityPersistenceOutboundPortImpl implements CancelActivityPersist
     }
 
     @Override
-    public Activity findActivity(String uuid) {
+    public Activity findForUpdate(String uuid) {
         Activity activity = activityService.findOne(uuid);
         entityInitAndDetachService.refresh(activity);
         return activity;
@@ -41,13 +41,12 @@ class CancelActivityPersistenceOutboundPortImpl implements CancelActivityPersist
      * Each pass must commit before the next sleep. A serializable read here would share
      * Execute Task's snapshot and could abort the outcome write, which is not retried.
      * findDetached does not. The graph is detached so status and provider run id can be
-     * read after this transaction ends. {@link #findActivity} only refreshes inside the
-     * caller's transaction and leaves the activity managed.
+     * read after this transaction ends. findForUpdate is find plus refresh, not a lock.
      */
     @Override
     public Activity findDetached(String uuid) {
         return committedReads.execute(status -> {
-            Activity activity = findActivity(uuid);
+            Activity activity = findForUpdate(uuid);
             entityInitAndDetachService.initializeEntityAndDetach(activity);
             return activity;
         });

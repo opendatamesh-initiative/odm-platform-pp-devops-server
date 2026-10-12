@@ -79,7 +79,7 @@ class CancelActivity implements UseCase {
 
     private List<String> cancelTasksThatHaveNotStarted() {
         return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findActivity(command.activityUuid());
+            Activity activity = persistencePort.findForUpdate(command.activityUuid());
             refuseWhenAlreadyTerminated(activity);
             Timestamp finishedAt = now();
             List<String> runningTaskUuids = new ArrayList<>();

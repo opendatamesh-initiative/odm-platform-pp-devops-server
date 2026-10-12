@@ -1,11 +1,9 @@
 package org.opendatamesh.platform.pp.devops.rest.v2.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.GitRefType;
-import org.opendatamesh.platform.pp.devops.activity.repositories.ActivitiesRepository;
 import org.opendatamesh.platform.pp.devops.rest.v2.DevOpsApplicationIT;
 import org.opendatamesh.platform.pp.devops.rest.v2.RoutesV2;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.ErrorRes;
@@ -16,8 +14,6 @@ import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.DataProduc
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskLogRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskResultRes;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -25,8 +21,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.JdbcTemplate;
-
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -37,20 +31,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class ActivityControllerIT extends DevOpsApplicationIT {
-
-    @Autowired
-    private ActivitiesRepository activitiesRepository;
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
-
-    @Value("${spring.jpa.properties.hibernate.default_schema}")
-    private String schema;
-
-    @BeforeEach
-    void cleanActivities() {
-        activitiesRepository.deleteAll();
-    }
 
     /**
      * Scenario: Omitted status defaults to PENDING and the server assigns the uuid
@@ -63,14 +43,17 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateActivityWithoutStatusThenPendingAndServerUuid() {
+        // Given
         ActivityRes payload = newActivity("dpv-create-pending", "create-pending");
 
+        // When
         ResponseEntity<ActivityRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(payload),
                 ActivityRes.class
         );
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getUuid()).isNotBlank();
@@ -92,6 +75,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateActivityWithClientUuidsThenNewRowsAndOriginalUntouched() {
+        // Given
         ActivityRes existingPayload = newActivity("dpv-existing", "existing-activity");
         TaskRes existingTask = new TaskRes();
         existingTask.setName("original-task");
@@ -125,12 +109,14 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         task.setResults(List.of(result));
         payload.setTasks(List.of(task));
 
+        // When
         ResponseEntity<ActivityRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(payload),
                 ActivityRes.class
         );
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getUuid()).isNotEqualTo(clientActivityUuid);
@@ -144,10 +130,12 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         assertThat(createdTask.getResults().get(0).getUuid()).isNotEqualTo(clientResultUuid);
         assertThat(createdTask.getResults().get(0).getGeneratedAt()).isEqualTo(generatedAt);
 
+        // When
         ResponseEntity<ActivityRes> existingGet = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + existing.getUuid()),
                 ActivityRes.class
         );
+        // Then
         assertThat(existingGet.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(existingGet.getBody()).isNotNull();
         assertThat(existingGet.getBody().getTasks()).hasSize(1);
@@ -163,6 +151,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenGetActivityThenReturnTaskGraph() {
+        // Given
         ActivityRes payload = newActivity("dpv-get-graph", "get-graph");
 
         TaskRes taskWithChildren = new TaskRes();
@@ -180,11 +169,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         payload.setTasks(List.of(taskWithChildren, secondTask));
         ActivityRes created = createActivity(payload);
 
+        // When
         ResponseEntity<ActivityRes> response = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 ActivityRes.class
         );
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getTasks()).hasSize(2);
@@ -210,6 +201,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenSearchByDataProductVersionUuidThenPageWithoutTasks() {
+        // Given
         ActivityRes withTask = newActivity("dpv-search-a", "search-a");
         TaskRes task = new TaskRes();
         task.setName("search-task");
@@ -217,6 +209,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         ActivityRes createdWithTask = createActivity(withTask);
         createActivity(newActivity("dpv-search-b", "search-b"));
 
+        // When
         ResponseEntity<Map<String, Object>> response = rest.exchange(
                 apiUrl(RoutesV2.ACTIVITIES, "?dataProductVersionUuid=" + createdWithTask.getDataProductVersionUuid()),
                 HttpMethod.GET,
@@ -225,6 +218,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
                 }
         );
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         @SuppressWarnings("unchecked")
@@ -246,6 +240,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenPutActivityThenReplaceTaskGraph() {
+        // Given
         ActivityRes payload = newActivity("dpv-put-graph", "put-graph");
         TaskRes taskA = new TaskRes();
         taskA.setName("task-a");
@@ -273,18 +268,22 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
 
         update.setTasks(List.of(updatedA, taskC));
 
+        // When
         ResponseEntity<ActivityRes> putResponse = rest.exchange(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 HttpMethod.PUT,
                 new HttpEntity<>(update),
                 ActivityRes.class
         );
+        // Then
         assertThat(putResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
+        // When
         ResponseEntity<ActivityRes> getResponse = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 ActivityRes.class
         );
+        // Then
         assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getResponse.getBody()).isNotNull();
         assertThat(getResponse.getBody().getName()).isEqualTo("put-graph-updated");
@@ -311,6 +310,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenDeleteActivityThenCascade() {
+        // Given
         ActivityRes payload = newActivity("dpv-delete", "delete-activity");
         TaskRes task = new TaskRes();
         task.setName("to-delete");
@@ -323,28 +323,37 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         payload.setTasks(List.of(task));
         ActivityRes created = createActivity(payload);
 
-        String taskUuid = created.getTasks().get(0).getUuid();
-        String logUuid = created.getTasks().get(0).getLogs().get(0).getUuid();
-        String resultUuid = created.getTasks().get(0).getResults().get(0).getUuid();
-
+        // When
         ResponseEntity<Void> deleteResponse = rest.exchange(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 HttpMethod.DELETE,
                 null,
                 Void.class
         );
+        // Then
         assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
+        // When
         ResponseEntity<JsonNode> getResponse = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 JsonNode.class
         );
+        // Then
         assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
-        assertThat(countRows("activities_tasks", "uuid", taskUuid)).isZero();
-        assertThat(countRows("activities_tasks_logs", "uuid", logUuid)).isZero();
-        assertThat(countRows("activities_tasks_results", "uuid", resultUuid)).isZero();
-        assertThat(countRows("activities_tasks", "activity_uuid", created.getUuid())).isZero();
+        // When
+        ResponseEntity<Map<String, Object>> remaining = rest.exchange(
+                apiUrl(RoutesV2.ACTIVITIES, "?dataProductVersionUuid=" + created.getDataProductVersionUuid()),
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<>() {
+                }
+        );
+        // Then
+        assertThat(remaining.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(remaining.getBody()).isNotNull();
+        assertThat(remaining.getBody().get("totalElements")).isEqualTo(0);
+        assertThat((List<?>) remaining.getBody().get("content")).isEmpty();
     }
 
     /**
@@ -356,12 +365,15 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateActivityWithoutRequiredFieldsThenBadRequest() {
+        // Given
         ActivityRes blankName = newActivity("dpv-required", " ");
+        // When
         ResponseEntity<ErrorRes> blankNameResponse = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(blankName),
                 ErrorRes.class
         );
+        // Then
         assertThat(blankNameResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(blankNameResponse.getBody()).isNotNull();
         assertThat(blankNameResponse.getBody().getMessage()).isEqualTo("Name is required");
@@ -369,11 +381,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         ActivityRes blankDpv = new ActivityRes();
         blankDpv.setDataProductVersionUuid(" ");
         blankDpv.setName("has-name");
+        // When
         ResponseEntity<ErrorRes> blankDpvResponse = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(blankDpv),
                 ErrorRes.class
         );
+        // Then
         assertThat(blankDpvResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(blankDpvResponse.getBody()).isNotNull();
         assertThat(blankDpvResponse.getBody().getMessage()).isEqualTo("Data product version UUID is required");
@@ -388,6 +402,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateActivityWithUnknownStatusThenBadRequest() {
+        // Given
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<String> entity = new HttpEntity<>(
@@ -395,11 +410,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
                 headers
         );
 
+        // When
         ResponseEntity<JsonNode> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 entity,
                 JsonNode.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
         String message = firstNonBlank(
@@ -419,6 +436,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateActivityWithOversizeLogContentThenBadRequest() {
+        // Given
         ActivityRes payload = newActivity("dpv-oversize-log", "oversize-log");
         TaskRes task = new TaskRes();
         task.setName("task");
@@ -427,11 +445,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         task.setLogs(List.of(log));
         payload.setTasks(List.of(task));
 
+        // When
         ResponseEntity<ErrorRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(payload),
                 ErrorRes.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getMessage()).isEqualTo("Log content cannot exceed 1048576 characters");
@@ -446,17 +466,20 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateActivityWithOversizeTaskDescriptionThenBadRequest() {
+        // Given
         ActivityRes payload = newActivity("dpv-oversize-desc", "oversize-desc");
         TaskRes task = new TaskRes();
         task.setName("task");
         task.setDescription("d".repeat(10_001));
         payload.setTasks(List.of(task));
 
+        // When
         ResponseEntity<ErrorRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(payload),
                 ErrorRes.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getMessage()).isEqualTo("Task description cannot exceed 10000 characters");
@@ -471,6 +494,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateActivityWithDuplicateTaskUuidThenBadRequest() {
+        // Given
         String sharedUuid = UUID.randomUUID().toString();
         ActivityRes payload = newActivity("dpv-dup-task-uuid", "dup-task-uuid");
         TaskRes first = new TaskRes();
@@ -481,11 +505,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         second.setName("second");
         payload.setTasks(List.of(first, second));
 
+        // When
         ResponseEntity<ErrorRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(payload),
                 ErrorRes.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getMessage()).isEqualTo("Duplicate task uuid in activity");
@@ -500,6 +526,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateActivityWithDuplicateLogUuidThenBadRequest() {
+        // Given
         String sharedUuid = UUID.randomUUID().toString();
         ActivityRes payload = newActivity("dpv-dup-log-uuid", "dup-log-uuid");
         TaskRes task = new TaskRes();
@@ -513,11 +540,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         task.setLogs(List.of(first, second));
         payload.setTasks(List.of(task));
 
+        // When
         ResponseEntity<ErrorRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(payload),
                 ErrorRes.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getMessage()).isEqualTo("Duplicate log uuid in task");
@@ -532,6 +561,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateActivityWithDuplicateResultUuidThenBadRequest() {
+        // Given
         String sharedUuid = UUID.randomUUID().toString();
         ActivityRes payload = newActivity("dpv-dup-result-uuid", "dup-result-uuid");
         TaskRes task = new TaskRes();
@@ -545,11 +575,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         task.setResults(List.of(first, second));
         payload.setTasks(List.of(task));
 
+        // When
         ResponseEntity<ErrorRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(payload),
                 ErrorRes.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getMessage()).isEqualTo("Duplicate result uuid in task");
@@ -563,6 +595,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenActivityUuidUnknownThenNotFound() {
+        // Given
         String unknownUuid = UUID.randomUUID().toString();
 
         assertThat(rest.getForEntity(apiUrl(RoutesV2.ACTIVITIES, "/" + unknownUuid), JsonNode.class)
@@ -593,6 +626,8 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenSearchWithNoRowsThenEmptyPage() {
+        // Given
+        // When
         ResponseEntity<Map<String, Object>> response = rest.exchange(
                 apiUrl(RoutesV2.ACTIVITIES),
                 HttpMethod.GET,
@@ -600,6 +635,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
                 new ParameterizedTypeReference<>() {
                 }
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().get("content")).isInstanceOf(List.class);
@@ -614,10 +650,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenSearchWithInvalidSortThenBadRequest() {
+        // Given
+        // When
         ResponseEntity<JsonNode> response = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "?sort=notAField,asc"),
                 JsonNode.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
@@ -629,17 +668,20 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateDuplicatePendingActivityThenCreated() {
+        // Given
         ActivityRes first = newActivity("dpv-dup", "same-name");
         first.setStatus(ExecutionStatus.PENDING);
         createActivity(first);
 
         ActivityRes second = newActivity("dpv-dup", "same-name");
         second.setStatus(ExecutionStatus.PENDING);
+        // When
         ResponseEntity<ActivityRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(second),
                 ActivityRes.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     }
 
@@ -651,16 +693,19 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenDeleteRunningActivityThenNoContent() {
+        // Given
         ActivityRes payload = newActivity("dpv-running-delete", "running-delete");
         payload.setStatus(ExecutionStatus.RUNNING);
         ActivityRes created = createActivity(payload);
 
+        // When
         ResponseEntity<Void> response = rest.exchange(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 HttpMethod.DELETE,
                 null,
                 Void.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
     }
 
@@ -674,6 +719,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenPutActivityWithEmptyTasksThenTasksRemoved() {
+        // Given
         ActivityRes payload = newActivity("dpv-clear-tasks", "clear-tasks");
         TaskRes task = new TaskRes();
         task.setName("to-clear");
@@ -684,18 +730,22 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         update.setUuid(created.getUuid());
         update.setTasks(new ArrayList<>());
 
+        // When
         ResponseEntity<ActivityRes> putResponse = rest.exchange(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 HttpMethod.PUT,
                 new HttpEntity<>(update),
                 ActivityRes.class
         );
+        // Then
         assertThat(putResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
+        // When
         ResponseEntity<ActivityRes> getResponse = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 ActivityRes.class
         );
+        // Then
         assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getResponse.getBody()).isNotNull();
         assertThat(getResponse.getBody().getTasks() == null || getResponse.getBody().getTasks().isEmpty()).isTrue();
@@ -711,6 +761,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenPutForeignTaskUuidThenDoNotReparent() {
+        // Given
         ActivityRes activityAPayload = newActivity("dpv-a", "activity-a");
         TaskRes taskT = new TaskRes();
         taskT.setName("task-t");
@@ -727,26 +778,32 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         foreignTask.setName("attempted-move");
         updateB.setTasks(List.of(foreignTask));
 
+        // When
         ResponseEntity<ActivityRes> putResponse = rest.exchange(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + activityB.getUuid()),
                 HttpMethod.PUT,
                 new HttpEntity<>(updateB),
                 ActivityRes.class
         );
+        // Then
         assertThat(putResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
+        // When
         ResponseEntity<ActivityRes> getA = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + activityA.getUuid()),
                 ActivityRes.class
         );
+        // Then
         assertThat(getA.getBody()).isNotNull();
         assertThat(getA.getBody().getTasks()).hasSize(1);
         assertThat(getA.getBody().getTasks().get(0).getUuid()).isEqualTo(taskTUuid);
 
+        // When
         ResponseEntity<ActivityRes> getB = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + activityB.getUuid()),
                 ActivityRes.class
         );
+        // Then
         assertThat(getB.getBody()).isNotNull();
         assertThat(getB.getBody().getTasks()).hasSize(1);
         assertThat(getB.getBody().getTasks().get(0).getUuid()).isNotEqualTo(taskTUuid);
@@ -762,6 +819,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateTwoTasksWithSameNameThenBothStored() {
+        // Given
         ActivityRes payload = newActivity("dpv-same-task-name", "same-task-name");
         TaskRes first = new TaskRes();
         first.setName("shared-name");
@@ -769,18 +827,22 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         second.setName("shared-name");
         payload.setTasks(List.of(first, second));
 
+        // When
         ResponseEntity<ActivityRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
                 new HttpEntity<>(payload),
                 ActivityRes.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).isNotNull();
 
+        // When
         ResponseEntity<ActivityRes> getResponse = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + response.getBody().getUuid()),
                 ActivityRes.class
         );
+        // Then
         assertThat(getResponse.getBody()).isNotNull();
         assertThat(getResponse.getBody().getTasks()).hasSize(2);
         assertThat(getResponse.getBody().getTasks())
@@ -799,6 +861,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenPutActivityWithPaddedTaskUuidThenUpdateOwnedTask() {
+        // Given
         ActivityRes payload = newActivity("dpv-padded-uuid", "padded-uuid");
         TaskRes task = new TaskRes();
         task.setName("original-name");
@@ -813,18 +876,22 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         paddedTask.setName("updated-name");
         update.setTasks(List.of(paddedTask));
 
+        // When
         ResponseEntity<ActivityRes> putResponse = rest.exchange(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 HttpMethod.PUT,
                 new HttpEntity<>(update),
                 ActivityRes.class
         );
+        // Then
         assertThat(putResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
+        // When
         ResponseEntity<ActivityRes> getResponse = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 ActivityRes.class
         );
+        // Then
         assertThat(getResponse.getBody()).isNotNull();
         assertThat(getResponse.getBody().getTasks()).hasSize(1);
         assertThat(getResponse.getBody().getTasks().get(0).getUuid()).isEqualTo(taskUuid);
@@ -839,12 +906,15 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenGetTaskCollectionThenNotFound() {
+        // Given
         ActivityRes created = createActivity(newActivity("dpv-no-tasks-route", "no-tasks-route"));
 
+        // When
         ResponseEntity<JsonNode> response = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid() + "/tasks"),
                 JsonNode.class
         );
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
@@ -857,6 +927,7 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenCreateCanceledActivityWithExecutionFieldsThenRoundTrip() {
+        // Given
         ActivityRes payload = newActivity("dpv-canceled-fields", "canceled-fields");
         payload.setStatus(ExecutionStatus.CANCELED);
 
@@ -883,11 +954,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         payload.setTasks(List.of(task));
 
         ActivityRes created = createActivity(payload);
+        // When
         ResponseEntity<ActivityRes> response = rest.getForEntity(
                 apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
                 ActivityRes.class
         );
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getStatus()).isEqualTo(ExecutionStatus.CANCELED);
@@ -919,15 +992,6 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         activity.setDataProductVersionUuid(dataProductVersionUuid);
         activity.setName(name);
         return activity;
-    }
-
-    private int countRows(String table, String column, String value) {
-        Integer count = jdbcTemplate.queryForObject(
-                "select count(*) from " + schema + "." + table + " where " + column + " = ?",
-                Integer.class,
-                value
-        );
-        return count == null ? 0 : count;
     }
 
     private static String textOrNull(JsonNode body, String field) {

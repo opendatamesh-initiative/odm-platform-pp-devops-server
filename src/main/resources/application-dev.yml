@@ -17,7 +17,8 @@ odm:
     policy-service:
       active: false
   utility-plane:
-    executor-services:
-      starter:
-        address: http://localhost:9080
-        execution-mode: full-control
+    executors:
+      services:
+        starter:
+          address: http://localhost:9080
+          execution-mode: full-control

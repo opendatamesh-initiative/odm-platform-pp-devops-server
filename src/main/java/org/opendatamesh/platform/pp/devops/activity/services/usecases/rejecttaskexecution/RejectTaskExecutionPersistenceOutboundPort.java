@@ -3,7 +3,7 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.rejecttas
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 
 interface RejectTaskExecutionPersistenceOutboundPort {
-    Activity findActivity(String uuid);
+    Activity findForUpdate(String uuid);
 
     Activity save(Activity activity);
 }

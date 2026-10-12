@@ -4,6 +4,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;
+import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
@@ -51,7 +52,29 @@ class RequestTaskExecution implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        requestPendingTask();
+        transactionalPort.doInTransaction(() -> {
+            List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionTag, activityName);
+            if (matches.isEmpty()) {
+                throw new NotFoundException("No PENDING or RUNNING activity " + activityName
+                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+            }
+            if (matches.size() > 1) {
+                throw new BadRequestException("More than one open activity " + activityName
+                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+            }
+            Activity activity = persistencePort.findForUpdate(matches.get(0).getUuid());
+            requireRunning(activity);
+            Task task = resolveTask(activity);
+            requireNoOtherTaskRunning(activity, task);
+            requireNextPendingTask(activity, task);
+            requireInstrumented(task);
+            requirePending(task);
+            task.setProviderRunId(providerRunId);
+            Activity saved = persistencePort.save(activity);
+            Task requested = resolveTask(saved);
+            notificationPort.emitTaskExecutionRequested(saved, requested);
+            presenter.presentTaskExecutionRequested(saved);
+        });
     }
 
     private void validateCommand() {
@@ -79,23 +102,6 @@ class RequestTaskExecution implements UseCase {
         if (!StringUtils.hasText(activityName)) {
             throw new BadRequestException("Activity name is required");
         }
-    }
-
-    private void requestPendingTask() {
-        transactionalPort.doInTransaction(() -> {
-            Activity activity = persistencePort.findOpenActivity(dataProductFqn, dataProductVersionTag, activityName);
-            requireRunning(activity);
-            Task task = resolveTask(activity);
-            requireNoOtherTaskRunning(activity, task);
-            requireNextPendingTask(activity, task);
-            requireInstrumented(task);
-            requirePending(task);
-            task.setProviderRunId(providerRunId);
-            Activity saved = persistencePort.save(activity);
-            Task requested = resolveTask(saved);
-            notificationPort.emitTaskExecutionRequested(saved, requested);
-            presenter.presentTaskExecutionRequested(saved);
-        });
     }
 
     private void requireRunning(Activity activity) {

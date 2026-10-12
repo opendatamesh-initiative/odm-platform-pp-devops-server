@@ -11,9 +11,7 @@ import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTas
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
 import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
-import org.opendatamesh.platform.pp.devops.executor.ExecutorPollingProperties;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorRunStatus;
-import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsProperties;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskMapper;
 import org.slf4j.Logger;
@@ -31,19 +29,13 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
 
     private final ExecutorServicesProperties executorServicesProperties;
     private final ExecutorClientFactory executorClientFactory;
-    private final ExecutorPollingProperties pollingProperties;
-    private final ExecutorSecretsProperties secretsProperties;
     private final TaskMapper taskMapper;
 
     ExecuteTaskExecutorOutboundPortImpl(ExecutorServicesProperties executorServicesProperties,
                                         ExecutorClientFactory executorClientFactory,
-                                        ExecutorPollingProperties pollingProperties,
-                                        ExecutorSecretsProperties secretsProperties,
                                         TaskMapper taskMapper) {
         this.executorServicesProperties = executorServicesProperties;
         this.executorClientFactory = executorClientFactory;
-        this.pollingProperties = pollingProperties;
-        this.secretsProperties = secretsProperties;
         this.taskMapper = taskMapper;
     }
 
@@ -80,12 +72,12 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
 
     @Override
     public void waitBeforeNextStatusRead() {
-        sleep(pollingProperties.getInterval().toMillis());
+        sleep(executorServicesProperties.getPollingInterval().toMillis());
     }
 
     @Override
     public int maxStatusReads() {
-        return pollingProperties.maxStatusReads(secretsProperties.getTtl());
+        return executorServicesProperties.maxStatusReads(executorServicesProperties.getTtl());
     }
 
     private static void sleep(long millis) {

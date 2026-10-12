@@ -13,9 +13,9 @@ public class ExecutorSecretsStoreImpl implements ExecutorSecretsStore {
 
     private final Cache<String, Map<String, String>> cache;
 
-    public ExecutorSecretsStoreImpl(ExecutorSecretsProperties secretsProperties) {
+    public ExecutorSecretsStoreImpl(ExecutorServicesProperties executorServicesProperties) {
         this.cache = Caffeine.newBuilder()
-                .expireAfterWrite(secretsProperties.getTtl())
+                .expireAfterWrite(executorServicesProperties.getTtl())
                 .build();
     }
 

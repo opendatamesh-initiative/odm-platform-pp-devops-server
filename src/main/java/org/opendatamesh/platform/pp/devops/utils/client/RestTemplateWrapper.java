@@ -8,6 +8,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
 import java.util.Map;
 
 class RestTemplateWrapper implements RestUtilsTemplate {
@@ -30,6 +31,9 @@ class RestTemplateWrapper implements RestUtilsTemplate {
 
     @Override
     public <T> T exchange(String url, HttpMethod method, HttpEntity<?> requestEntity, Class<T> responseType, Object... uriVariables) throws ClientException {
+        if (uriVariables == null || uriVariables.length == 0) {
+            return exchangeLiteral(url, method, requestEntity, responseType);
+        }
         try {
             LinkedMultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
             requestEntity.getRawHeaders().forEach(headers::add);
@@ -49,6 +53,9 @@ class RestTemplateWrapper implements RestUtilsTemplate {
 
     @Override
     public <T> T exchange(String url, HttpMethod method, HttpEntity<?> requestEntity, Class<T> responseType, Map<String, ?> uriVariables) throws ClientException {
+        if (uriVariables == null || uriVariables.isEmpty()) {
+            return exchangeLiteral(url, method, requestEntity, responseType);
+        }
         try {
             LinkedMultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
             requestEntity.getRawHeaders().forEach(headers::add);
@@ -58,6 +65,23 @@ class RestTemplateWrapper implements RestUtilsTemplate {
                     new org.springframework.http.HttpEntity<>(requestEntity.getBody(), headers),
                     responseType,
                     uriVariables
+            ).getBody();
+        } catch (RestClientResponseException e) {
+            throw new ClientException(e.getRawStatusCode(), e.getResponseBodyAsString());
+        } catch (RestClientException e) {
+            throw new ClientException(500, e.getMessage());
+        }
+    }
+
+    private <T> T exchangeLiteral(String url, HttpMethod method, HttpEntity<?> requestEntity, Class<T> responseType) throws ClientException {
+        try {
+            LinkedMultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+            requestEntity.getRawHeaders().forEach(headers::add);
+            return restTemplate.exchange(
+                    URI.create(url),
+                    org.springframework.http.HttpMethod.valueOf(method.name()),
+                    new org.springframework.http.HttpEntity<>(requestEntity.getBody(), headers),
+                    responseType
             ).getBody();
         } catch (RestClientResponseException e) {
             throw new ClientException(e.getRawStatusCode(), e.getResponseBodyAsString());

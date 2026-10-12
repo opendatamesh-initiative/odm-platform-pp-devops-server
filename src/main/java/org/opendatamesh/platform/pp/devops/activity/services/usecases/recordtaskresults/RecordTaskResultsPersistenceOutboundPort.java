@@ -2,10 +2,12 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.recordtas
 
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 
-interface RecordTaskResultsPersistenceOutboundPort {
-    Activity findActivity(String uuid);
+import java.util.List;
 
-    Activity findOpenActivity(String dataProductFqn, String dataProductVersionTag, String activityName);
+interface RecordTaskResultsPersistenceOutboundPort {
+    Activity findForUpdate(String uuid);
+
+    List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName);
 
     Activity save(Activity activity);
 }

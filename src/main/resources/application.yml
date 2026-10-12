@@ -15,11 +15,9 @@ odm:
     policy-service:
       active: false
   utility-plane:
-    executor-polling:
-      interval: 30s
-    executor-secrets:
-      ttl: 1h
-    executor-services: {}
+    executors:
+      polling-interval: 30s
+      secrets-ttl: 1h
 
 spring:
   profiles:
@@ -38,12 +36,6 @@ spring:
       hibernate:
         default_schema: odm_devops
         ddl-auto: validate
-  task:
-    execution:
-      pool:
-        core-size: 8
-        max-size: 32
-        queue-capacity: 100
 
 info:
   version: @project.version@

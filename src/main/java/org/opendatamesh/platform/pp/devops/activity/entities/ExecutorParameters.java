@@ -1,5 +1,9 @@
 package org.opendatamesh.platform.pp.devops.activity.entities;
 
+/**
+ * Value object inside the executor-parameters JSON of a task.
+ * Hibernate does not map this type. It has no table.
+ */
 public class ExecutorParameters {
 
     private String repositoryKey;

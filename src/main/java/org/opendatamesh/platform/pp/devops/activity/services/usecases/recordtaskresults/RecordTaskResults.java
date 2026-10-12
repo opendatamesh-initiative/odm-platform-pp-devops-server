@@ -5,6 +5,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.activity.entities.TaskResult;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;
+import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
 import org.springframework.util.StringUtils;
@@ -44,7 +45,27 @@ class RecordTaskResults implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        appendResults();
+        transactionalPort.doInTransaction(() -> {
+            Activity activity;
+            if (StringUtils.hasText(activityUuid)) {
+                activity = persistencePort.findForUpdate(activityUuid);
+            } else {
+                List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionTag, activityName);
+                if (matches.isEmpty()) {
+                    throw new NotFoundException("No PENDING or RUNNING activity " + activityName
+                            + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+                }
+                if (matches.size() > 1) {
+                    throw new BadRequestException("More than one open activity " + activityName
+                            + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+                }
+                activity = persistencePort.findForUpdate(matches.get(0).getUuid());
+            }
+            Task task = resolveTask(activity);
+            requireRunning(task);
+            appendTo(task);
+            presenter.presentTaskResultsRecorded(persistencePort.save(activity));
+        });
     }
 
     private void validateCommand() {
@@ -79,18 +100,6 @@ class RecordTaskResults implements UseCase {
         if (result.getGeneratedAt() == null) {
             result.setGeneratedAt(new Timestamp(System.currentTimeMillis()));
         }
-    }
-
-    private void appendResults() {
-        transactionalPort.doInTransaction(() -> {
-            Activity activity = StringUtils.hasText(activityUuid)
-                    ? persistencePort.findActivity(activityUuid)
-                    : persistencePort.findOpenActivity(dataProductFqn, dataProductVersionTag, activityName);
-            Task task = resolveTask(activity);
-            requireRunning(task);
-            appendTo(task);
-            presenter.presentTaskResultsRecorded(persistencePort.save(activity));
-        });
     }
 
     private void appendTo(Task task) {

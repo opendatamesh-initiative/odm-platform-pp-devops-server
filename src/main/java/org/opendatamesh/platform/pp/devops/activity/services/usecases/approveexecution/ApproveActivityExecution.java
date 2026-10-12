@@ -65,7 +65,7 @@ class ApproveActivityExecution implements UseCase {
 
     private Activity approvePendingActivity() {
         return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findActivity(command.activityUuid());
+            Activity activity = persistencePort.findForUpdate(command.activityUuid());
             if (activity.getStatus() != ExecutionStatus.PENDING) {
                 return null;
             }

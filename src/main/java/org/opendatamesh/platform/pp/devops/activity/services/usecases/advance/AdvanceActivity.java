@@ -85,7 +85,7 @@ class AdvanceActivity implements UseCase {
 
     private AdvanceWork advanceRunningActivity() {
         return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findActivity(command.activityUuid());
+            Activity activity = persistencePort.findForUpdate(command.activityUuid());
             List<Task> tasks = tasksInSortOrder(activity);
             if (isTerminal(activity.getStatus())) {
                 return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);

@@ -1,12 +1,9 @@
 package org.opendatamesh.platform.pp.devops.rest.v2.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.opendatamesh.platform.pp.devops.activity.entities.GitRefType;
-import org.opendatamesh.platform.pp.devops.activity.repositories.ActivitiesRepository;
-import org.opendatamesh.platform.pp.devops.client.notification.NotificationClient;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorSecretsStore;
 import org.opendatamesh.platform.pp.devops.rest.v2.DevOpsApplicationIT;
 import org.opendatamesh.platform.pp.devops.rest.v2.RoutesV2;
@@ -36,11 +33,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 
 /**
  * Execute an activity and keep executor secrets in memory.
@@ -52,22 +44,11 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
     private static final String SECRET = "stored-token";
     private static final String OTHER_SECRET = "other-token";
 
-    @Autowired
-    private ActivitiesRepository activitiesRepository;
-
-    @Autowired
-    private NotificationClient notificationClient;
 
     @Autowired
     private ExecutorSecretsStore executorSecretsStore;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @BeforeEach
-    void resetState() {
-        activitiesRepository.deleteAll();
-        reset(notificationClient);
-    }
 
     /**
      * Feature: Execute an activity
@@ -84,13 +65,16 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenExecuteActivityThenPendingAndExecutionRequested() throws Exception {
+        // Given
         ActivityRes activity = executableActivity("dpv-execute", "prod", 2);
         activity.getTasks().get(0).setPipelineParameters(Map.of(
                 "infraEndpoint", "${dev.results.deploy-infrastructure.endpoint}"
         ));
 
+        // When
         ResponseEntity<ActivityExecuteResultRes> response = execute(activity, null);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         ActivityRes created = response.getBody().getActivity();
         assertThat(created.getStatus()).isEqualTo(ExecutionStatus.PENDING);
@@ -110,10 +94,8 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
             assertThat(task.getExecutorParameters().getRef().getType()).isEqualTo(GitRefType.TAG);
         });
 
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient, times(1)).notifyEvent(events.capture());
-        assertThat(events.getValue()).isInstanceOf(EmittedEventActivityExecutionRequestedRes.class);
-        EmittedEventActivityExecutionRequestedRes event = (EmittedEventActivityExecutionRequestedRes) events.getValue();
+        assertThat(notifiedEvents()).singleElement().isInstanceOf(EmittedEventActivityExecutionRequestedRes.class);
+        EmittedEventActivityExecutionRequestedRes event = (EmittedEventActivityExecutionRequestedRes) notifiedEvents().get(0);
         assertThat(event.getType()).isEqualTo(EventTypeRes.ACTIVITY_EXECUTION_REQUESTED);
         assertThat(event.getEventContent().getActivity().getSortOrder()).isEqualTo(2);
         assertThat(event.getEventContent().getActivity().getTasks()).hasSize(2);
@@ -134,6 +116,7 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenExecuteWithReservedFieldsThenReset() {
+        // Given
         ActivityRes activity = executableActivity("dpv-reserved", "prod", 1);
         Date stamp = new Date(1_700_000_000_000L);
         activity.setStatus(ExecutionStatus.RUNNING);
@@ -152,8 +135,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
             task.setResults(List.of(result));
         }
 
+        // When
         ResponseEntity<ActivityExecuteResultRes> response = execute(activity, null);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         ActivityRes created = response.getBody().getActivity();
         assertThat(created.getStatus()).isEqualTo(ExecutionStatus.PENDING);
@@ -180,8 +165,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenExecuteNotExecutableThenBadRequest() {
+        // Given
         ActivityRes noTasks = namedActivity("dpv-refuse", "prod", 1);
         noTasks.setTasks(List.of());
+        // When
         assertBadRequest(noTasks, "Activity must have at least one task");
 
         ActivityRes noSortOrder = executableActivity("dpv-refuse", "prod", 1);
@@ -196,8 +183,11 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
         noParameters.getTasks().get(0).setExecutorParameters(null);
         assertBadRequest(noParameters, "Task deploy: executor parameters are required");
 
-        assertThat(activitiesRepository.count()).isZero();
-        verify(notificationClient, never()).notifyEvent(any());
+        ResponseEntity<JsonNode> stored = rest.getForEntity(apiUrl(RoutesV2.ACTIVITIES), JsonNode.class);
+        // Then
+        assertThat(stored.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(stored.getBody().get("totalElements").asInt()).isZero();
+        assertThat(notifiedEvents()).isEmpty();
     }
 
     /**
@@ -210,8 +200,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenExecutorParametersIncompleteThenBadRequest() {
+        // Given
         ActivityRes noProviderType = executableActivity("dpv-params", "prod", 1);
         noProviderType.getTasks().get(0).getExecutorParameters().getDataProductRepo().setProviderType(" ");
+        // When
         assertBadRequest(noProviderType, "Task deploy: executor parameters repository provider type is required");
 
         ActivityRes noRefName = executableActivity("dpv-params", "prod", 1);
@@ -233,6 +225,7 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenProviderSpecificFieldsMissingThenCreated() {
+        // Given
         ActivityRes activity = executableActivity("dpv-github", "prod", 1);
         ExecutorParametersRes parameters = activity.getTasks().get(0).getExecutorParameters();
         parameters.setPipelineIdentifier(null);
@@ -240,8 +233,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
         parameters.getDataProductRepo().setOwnerId(null);
         parameters.getDataProductRepo().setOwnerType(null);
 
+        // When
         ResponseEntity<ActivityExecuteResultRes> response = execute(activity, null);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     }
 
@@ -255,8 +250,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenPipelineParameterInvalidThenBadRequest() {
+        // Given
         ActivityRes blankKey = executableActivity("dpv-pipeline", "prod", 1);
         blankKey.getTasks().get(0).setPipelineParameters(new LinkedHashMap<>(Map.of(" ", "value")));
+        // When
         assertBadRequest(blankKey, "Task deploy: pipeline parameter keys cannot be blank");
 
         ActivityRes nullValue = executableActivity("dpv-pipeline", "prod", 1);
@@ -277,8 +274,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenExecutorUndeclaredThenBadRequest() {
+        // Given
         ActivityRes activity = executableActivity("dpv-unknown", "prod", 1);
         activity.getTasks().get(0).setExecutorName("unknown");
+        // When
         assertBadRequest(activity, "Executor unknown is not declared");
     }
 
@@ -296,6 +295,7 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenExecutorInstrumentedThenPendingAndExecutionRequested() {
+        // Given
         ActivityRes activity = namedActivity("dpv-cli", "prod", 1);
         TaskRes task = new TaskRes();
         task.setName("deploy");
@@ -304,8 +304,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
         HttpHeaders headers = new HttpHeaders();
         headers.add("x-odm-cli-executor-secret-token", SECRET);
 
+        // When
         ResponseEntity<ActivityExecuteResultRes> response = execute(activity, headers);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         ActivityRes created = response.getBody().getActivity();
         assertThat(created.getStatus()).isEqualTo(ExecutionStatus.PENDING);
@@ -315,9 +317,7 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
             assertThat(createdTask.getExecutorParameters()).isNull();
             assertThat(createdTask.getPipelineParameters()).isNull();
         });
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient, times(1)).notifyEvent(events.capture());
-        assertThat(events.getValue()).isInstanceOf(EmittedEventActivityExecutionRequestedRes.class);
+        assertThat(notifiedEvents()).singleElement().isInstanceOf(EmittedEventActivityExecutionRequestedRes.class);
         assertThat(executorSecretsStore.find("cli", created.getUuid())).isEmpty();
     }
 
@@ -334,6 +334,7 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenMixedActivityThenSecretsStoredForFullControlOnly() {
+        // Given
         ActivityRes activity = namedActivity("dpv-mixed", "prod", 1);
         TaskRes starter = task("deploy");
         TaskRes cli = new TaskRes();
@@ -344,8 +345,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
         headers.add("x-odm-starter-executor-secret-token", SECRET);
         headers.add("x-odm-cli-executor-secret-token", OTHER_SECRET);
 
+        // When
         ResponseEntity<ActivityExecuteResultRes> response = execute(activity, headers);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         ActivityRes created = response.getBody().getActivity();
         assertThat(created.getTasks()).hasSize(2);
@@ -367,9 +370,12 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenSameActivityOpenThenBadRequestAndOtherNameCreated() {
+        // Given
         assertThat(execute(executableActivity("dpv-open", "prod", 1), null).getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
+        // When
         ResponseEntity<ErrorRes> duplicate = executeExpectingError(executableActivity("dpv-open", "prod", 1));
+        // Then
         assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(duplicate.getBody().getMessage())
                 .isEqualTo("Activity prod of data product version dpv-open is already PENDING or RUNNING");
@@ -389,21 +395,23 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      */
     @Test
     public void whenExecuteWithSecretHeadersThenStoredRewrittenForTaskExecutorOnly() throws Exception {
+        // Given
         HttpHeaders headers = new HttpHeaders();
         headers.add("x-odm-starter-executor-secret-token", SECRET);
         headers.add("x-odm-other-executor-secret-token", OTHER_SECRET);
 
+        // When
         ResponseEntity<ActivityExecuteResultRes> response = execute(executableActivity("dpv-secrets", "prod", 1), headers);
 
+        // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String activityUuid = response.getBody().getActivity().getUuid();
         assertThat(executorSecretsStore.find("starter", activityUuid)).containsEntry("x-odm-token", SECRET);
         assertThat(executorSecretsStore.find("other", activityUuid)).isEmpty();
         assertThat(objectMapper.writeValueAsString(response.getBody())).doesNotContain(SECRET, OTHER_SECRET);
 
-        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
-        verify(notificationClient).notifyEvent(events.capture());
-        assertThat(objectMapper.writeValueAsString(events.getValue())).doesNotContain(SECRET, OTHER_SECRET);
+        assertThat(notifiedEvents()).singleElement();
+        assertThat(objectMapper.writeValueAsString(notifiedEvents().get(0))).doesNotContain(SECRET, OTHER_SECRET);
     }
 
     private void assertBadRequest(ActivityRes activity, String message) {

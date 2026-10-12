@@ -4,6 +4,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;
+import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
@@ -80,7 +81,16 @@ class RecordTaskStatus implements UseCase {
 
     private void recordTerminalStatus() {
         activityUuid = transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findOpenActivity(dataProductFqn, dataProductVersionTag, activityName);
+            List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionTag, activityName);
+            if (matches.isEmpty()) {
+                throw new NotFoundException("No PENDING or RUNNING activity " + activityName
+                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+            }
+            if (matches.size() > 1) {
+                throw new BadRequestException("More than one open activity " + activityName
+                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+            }
+            Activity activity = persistencePort.findForUpdate(matches.get(0).getUuid());
             Task task = resolveTask(activity);
             requireInstrumented(task);
             requireRunning(task);
