@@ -79,7 +79,7 @@ public class ActivityServiceImpl
             addIfPresent(specs, ActivitiesRepository.Specs.hasDataProductFqn(filters.getDataProductFqn()));
             addIfPresent(specs, ActivitiesRepository.Specs.hasDataProductVersionTag(filters.getDataProductVersionTag()));
             addIfPresent(specs, ActivitiesRepository.Specs.hasName(filters.getName()));
-            addIfPresent(specs, ActivitiesRepository.Specs.hasStatus(filters.getStatus()));
+            addIfPresent(specs, ActivitiesRepository.Specs.hasStatusIn(filters.getStatuses()));
         }
         return SpecsUtils.combineWithAnd(specs);
     }
@@ -130,12 +130,16 @@ public class ActivityServiceImpl
             task.setName(trimToNull(task.getName()));
             task.setDescription(trimToNull(task.getDescription()));
             task.setProviderRunId(trimToNull(task.getProviderRunId()));
+            task.setExecutorName(trimToNull(task.getExecutorName()));
 
             if (task.getName() != null && task.getName().length() > 255) {
                 throw new BadRequestException("Task name cannot exceed 255 characters");
             }
             if (task.getProviderRunId() != null && task.getProviderRunId().length() > 255) {
                 throw new BadRequestException("Provider run id cannot exceed 255 characters");
+            }
+            if (task.getExecutorName() != null && task.getExecutorName().length() > 255) {
+                throw new BadRequestException("Executor name cannot exceed 255 characters");
             }
             if (task.getDescription() != null && task.getDescription().length() > 10000) {
                 throw new BadRequestException("Task description cannot exceed 10000 characters");
@@ -308,6 +312,9 @@ public class ActivityServiceImpl
         target.setProviderRunId(source.getProviderRunId());
         target.setStartedAt(source.getStartedAt());
         target.setFinishedAt(source.getFinishedAt());
+        target.setExecutorName(source.getExecutorName());
+        target.setExecutorParameters(source.getExecutorParameters());
+        target.setPipelineParameters(source.getPipelineParameters());
     }
 
     private static void replaceLogs(Task managedTask, List<TaskLog> incomingLogs) {

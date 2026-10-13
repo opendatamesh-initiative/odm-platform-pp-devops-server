@@ -12,15 +12,20 @@ Index of guides for the **ODM Platform DevOps Server**.
 
 ## Service
 
-Add domain guides under [`service/`](service/) as the product grows. Engineering conventions live in [`spdd/norms/`](../spdd/norms/README.md).
+| Guide | Description |
+|:------|:------------|
+| [How DevOps works](service/how-devops-works.md) | **Start here.** What the service is for, how the lifecycle process goes, then each capability in detail: activities and tasks, full control and instrumented pipelines, executors, results, policies, cancel |
+| [Events](service/events.md) | Reference: the messages DevOps exchanges for approvals and outcomes |
+
+Engineering conventions live in [`spdd/norms/`](../spdd/norms/README.md).
 
 ## Setup
 
 | Guide | Description |
 |:------|:------------|
 | [Development](setup/development.md) | Local build, run, profiles, and testing |
-| [Deployment](setup/deployment.md) | Docker / container deployment |
-| [Configuration](setup/configuration.md) | Properties to manage (DB, Notification) |
+| [Deployment](setup/deployment.md) | Docker / container deployment and external dependencies |
+| [Configuration](setup/configuration.md) | Properties to manage (DB, Notification, Policy, executors) + minimal example |
 
 ---
 

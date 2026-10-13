@@ -99,6 +99,9 @@ erDiagram
     integer sort_order "NULL"
     varchar_255 status "CRUD default PENDING"
     varchar_255 provider_run_id "NULL"
+    varchar_255 executor_name "NULL, BDMD-5437"
+    text executor_parameters "NULL, JSON, BDMD-5437"
+    text pipeline_parameters "NULL, JSON, BDMD-5437"
     timestamp started_at "NULL"
     timestamp finished_at "NULL"
     timestamp created_at
@@ -153,7 +156,7 @@ Leverage the generic filtered+mapped CRUD layer, repository specifications, MapS
 - **External Pipeline Run.** → **`provider_run_id` only. No Pipeline or Pipeline Run entity.**
 - **Three timestamp meanings.** → **Audit timestamps on every row; `started_at` / `finished_at` on Activity and Task; `generated_at` on Logs and Results.**
 - **HTTP shape.** One activity collection: paginated search, get-by-id with the nested graph, POST and PUT of the whole aggregate, delete of the activity. This service’s 400/404/409 errors. No task routes.
-- **Schema.** Placeholder Flyway `V1` is not a product schema. → **Replace it with the diagram above.** Later tables use new versions.
+- **Schema.** Placeholder Flyway `V1` is not a product schema. → **Replace it with the diagram above.** Later changes use a new version after the first deployment. BDMD-5437 added `executor_name`, `executor_parameters`, and `pipeline_parameters` to `activities_tasks` in that same `V1`, still before the first deployment.
 - **Resources live in this repository.** No separate API module.
 
 ### Alternatives Considered
@@ -215,7 +218,7 @@ Leverage the generic filtered+mapped CRUD layer, repository specifications, MapS
 - **PUT replacing logs.** Correct for anemic replace. The later terminal-status poll stores the log it fetched; it does not merge a partial list into an overwrite.
 - **Filtering activities by FQN and tag instead of the UUID.** Mitigation: the UI and the primary index use `data_product_version_uuid`.
 - **Search returning the full task/log/result graph.** Mitigation: list/search returns the Activity without the full graph; get-by-id returns the nested parts, which is how tasks are read.
-- **Placeholder Flyway `V1`.** Replace it with this schema before any product database applies the placeholder. Do not edit `V1` again after that.
+- **Placeholder Flyway `V1`.** Replace it with this schema before any product database applies the placeholder. BDMD-5437 extended that same file with the task execution columns, still before the first deployment. After the first deployment, do not edit `V1` again.
 - **H2 vs PostgreSQL types.** Keep portable types; details in REASONS Canvas.
 
 ### Acceptance Criteria Coverage

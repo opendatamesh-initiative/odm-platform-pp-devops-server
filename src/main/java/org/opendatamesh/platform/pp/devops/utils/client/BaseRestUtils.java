@@ -71,7 +71,7 @@ class BaseRestUtils implements RestUtils {
             JsonNode response = rest.exchange(
                     uriComponents.getBuilder().build().toUriString(),
                     HttpMethod.GET,
-                    new HttpEntity<>(httpHeaders),
+                    new HttpEntity<>(null, httpHeaders),
                     JsonNode.class,
                     uriComponents.getUriVariables()
             );
@@ -107,7 +107,7 @@ class BaseRestUtils implements RestUtils {
             JsonNode response = rest.exchange(
                     uriComponents.getBuilder().build().toUriString(),
                     HttpMethod.GET,
-                    new HttpEntity<>(httpHeaders),
+                    new HttpEntity<>(null, httpHeaders),
                     JsonNode.class,
                     uriComponents.getUriVariables()
             );
@@ -137,7 +137,7 @@ class BaseRestUtils implements RestUtils {
             JsonNode response = rest.exchange(
                     url,
                     HttpMethod.GET,
-                    new HttpEntity<>(httpHeaders),
+                    new HttpEntity<>(null, httpHeaders),
                     JsonNode.class,
                     identifier
             );
@@ -251,7 +251,7 @@ class BaseRestUtils implements RestUtils {
         rest.exchange(
                 url,
                 HttpMethod.DELETE,
-                new HttpEntity<>(httpHeaders),
+                new HttpEntity<>(null, httpHeaders),
                 JsonNode.class,
                 identifier
         );

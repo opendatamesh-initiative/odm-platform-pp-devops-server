@@ -2,13 +2,15 @@ package org.opendatamesh.platform.pp.devops.rest.v2.resources.activity;
 
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 
+import java.util.Set;
+
 public class ActivitySearchOptions {
 
     private String dataProductVersionUuid;
     private String dataProductFqn;
     private String dataProductVersionTag;
     private String name;
-    private ExecutionStatus status;
+    private Set<ExecutionStatus> statuses;
 
     public String getDataProductVersionUuid() {
         return dataProductVersionUuid;
@@ -42,11 +44,11 @@ public class ActivitySearchOptions {
         this.name = name;
     }
 
-    public ExecutionStatus getStatus() {
-        return status;
+    public Set<ExecutionStatus> getStatuses() {
+        return statuses;
     }
 
-    public void setStatus(ExecutionStatus status) {
-        this.status = status;
+    public void setStatuses(Set<ExecutionStatus> statuses) {
+        this.statuses = statuses;
     }
 }

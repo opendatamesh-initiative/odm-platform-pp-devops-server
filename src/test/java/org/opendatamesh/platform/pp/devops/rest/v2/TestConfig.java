@@ -3,10 +3,10 @@ package org.opendatamesh.platform.pp.devops.rest.v2;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.task.SyncTaskExecutor;
@@ -34,8 +34,8 @@ public class TestConfig {
     }
 
     /**
-     * Scans for all interfaces under the client packages and
-     * registers a Mockito.mock(clazz) as a singleton bean for each.
+     * Replaces notification client interfaces with Mockito mocks.
+     * The executor factory stays {@code ExecutorClientFactoryMock}: it needs a status script.
      */
     @Bean
     public static BeanFactoryPostProcessor mockClientsRegistrar() {
@@ -45,7 +45,7 @@ public class TestConfig {
             PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
             MetadataReaderFactory readerFactory = new CachingMetadataReaderFactory(resolver);
 
-            String pattern = "classpath*:org/opendatamesh/platform/pp/devops/client/**/*.class";
+            String pattern = "classpath*:org/opendatamesh/platform/pp/devops/client/notification/**/*.class";
 
             try {
                 Resource[] resources = resolver.getResources(pattern);
@@ -56,7 +56,6 @@ public class TestConfig {
 
                     if (clazz.isInterface()) {
                         String beanName = StringUtils.uncapitalize(clazz.getSimpleName());
-                        // Remove all beans of this type
                         String[] beanNamesForType = factory.getBeanNamesForType(clazz);
                         for (String existingBeanName : beanNamesForType) {
                             factory.removeBeanDefinition(existingBeanName);
