@@ -1,7 +1,9 @@
 package org.opendatamesh.platform.pp.devops.client.executor;
 
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsRes;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskRunCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskCancelCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
@@ -33,7 +35,7 @@ class ExecutorClientImpl implements ExecutorClient {
     }
 
     @Override
-    public void cancelTask(ExecutorTaskRunCommandRes command) {
+    public void cancelTask(ExecutorTaskCancelCommandRes command) {
         restUtils.genericPost(
                 address + "/api/v2/up/executor/tasks/cancel",
                 secretHeaders,
@@ -43,7 +45,7 @@ class ExecutorClientImpl implements ExecutorClient {
     }
 
     @Override
-    public ExecutorTaskStatusRes getTaskStatus(ExecutorTaskRunCommandRes command) {
+    public ExecutorTaskStatusRes getTaskStatus(ExecutorTaskStatusCommandRes command) {
         return restUtils.genericPost(
                 address + "/api/v2/up/executor/tasks/status",
                 secretHeaders,
@@ -53,7 +55,7 @@ class ExecutorClientImpl implements ExecutorClient {
     }
 
     @Override
-    public ExecutorTaskLogsRes getTaskLogs(ExecutorTaskRunCommandRes command) {
+    public ExecutorTaskLogsRes getTaskLogs(ExecutorTaskLogsCommandRes command) {
         return restUtils.genericPost(
                 address + "/api/v2/up/executor/tasks/logs",
                 secretHeaders,

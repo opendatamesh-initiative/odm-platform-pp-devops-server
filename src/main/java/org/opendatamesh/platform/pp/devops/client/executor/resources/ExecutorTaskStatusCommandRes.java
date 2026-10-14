@@ -1,16 +1,18 @@
 package org.opendatamesh.platform.pp.devops.client.executor.resources;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ExecutorParametersRes;
 
-public class ExecutorTaskRunCommandRes {
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class ExecutorTaskStatusCommandRes {
 
     private ExecutorParametersRes executorParameters;
     private String providerRunId;
 
-    public ExecutorTaskRunCommandRes() {
+    public ExecutorTaskStatusCommandRes() {
     }
 
-    public ExecutorTaskRunCommandRes(ExecutorParametersRes executorParameters, String providerRunId) {
+    public ExecutorTaskStatusCommandRes(ExecutorParametersRes executorParameters, String providerRunId) {
         this.executorParameters = executorParameters;
         this.providerRunId = providerRunId;
     }

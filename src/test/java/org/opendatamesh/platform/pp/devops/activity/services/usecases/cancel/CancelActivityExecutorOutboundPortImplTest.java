@@ -7,7 +7,9 @@ import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClient;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsRes;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskRunCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskCancelCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
@@ -102,7 +104,7 @@ class CancelActivityExecutorOutboundPortImplTest {
 
         assertThat(result).isEqualTo(CancelRunResult.POSTED);
         assertThat(client.cancelCalls()).hasSize(1);
-        ExecutorTaskRunCommandRes command = client.cancelCalls().get(0);
+        ExecutorTaskCancelCommandRes command = client.cancelCalls().get(0);
         assertThat(command.getProviderRunId()).isEqualTo("42");
         assertThat(command.getExecutorParameters()).isNotNull();
     }
@@ -130,18 +132,18 @@ class CancelActivityExecutorOutboundPortImplTest {
     private static final class FakeExecutorClient implements ExecutorClient {
 
         private final Integer cancelStatus;
-        private final List<ExecutorTaskRunCommandRes> cancelCalls = new ArrayList<>();
+        private final List<ExecutorTaskCancelCommandRes> cancelCalls = new ArrayList<>();
 
         FakeExecutorClient(Integer cancelStatus) {
             this.cancelStatus = cancelStatus;
         }
 
-        List<ExecutorTaskRunCommandRes> cancelCalls() {
+        List<ExecutorTaskCancelCommandRes> cancelCalls() {
             return cancelCalls;
         }
 
         @Override
-        public void cancelTask(ExecutorTaskRunCommandRes command) {
+        public void cancelTask(ExecutorTaskCancelCommandRes command) {
             cancelCalls.add(command);
             if (cancelStatus != null) {
                 throw new ClientException(cancelStatus, "refused");
@@ -154,12 +156,12 @@ class CancelActivityExecutorOutboundPortImplTest {
         }
 
         @Override
-        public ExecutorTaskStatusRes getTaskStatus(ExecutorTaskRunCommandRes command) {
+        public ExecutorTaskStatusRes getTaskStatus(ExecutorTaskStatusCommandRes command) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public ExecutorTaskLogsRes getTaskLogs(ExecutorTaskRunCommandRes command) {
+        public ExecutorTaskLogsRes getTaskLogs(ExecutorTaskLogsCommandRes command) {
             throw new UnsupportedOperationException();
         }
     }

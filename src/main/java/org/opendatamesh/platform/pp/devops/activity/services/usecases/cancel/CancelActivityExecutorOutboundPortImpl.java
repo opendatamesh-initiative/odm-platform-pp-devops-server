@@ -3,7 +3,7 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.cancel;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClient;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskRunCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskCancelCommandRes;
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
@@ -41,7 +41,7 @@ class CancelActivityExecutorOutboundPortImpl implements CancelActivityExecutorOu
         ExecutorClient client = executorClientFactory.getExecutorClient(task.getExecutorName(), task.getActivity().getUuid());
         for (int attempt = 1; attempt <= MAX_CALLS; attempt++) {
             try {
-                client.cancelTask(runCommand(task));
+                client.cancelTask(cancelCommand(task));
                 return CancelRunResult.POSTED;
             } catch (ClientException exception) {
                 if (exception.getCode() == 404 || exception.getCode() == 409) {
@@ -56,8 +56,8 @@ class CancelActivityExecutorOutboundPortImpl implements CancelActivityExecutorOu
         return CancelRunResult.UNREACHABLE;
     }
 
-    private ExecutorTaskRunCommandRes runCommand(Task task) {
-        return new ExecutorTaskRunCommandRes(
+    private ExecutorTaskCancelCommandRes cancelCommand(Task task) {
+        return new ExecutorTaskCancelCommandRes(
                 taskMapper.jsonNodeToExecutorParameters(task.getExecutorParameters()),
                 task.getProviderRunId()
         );

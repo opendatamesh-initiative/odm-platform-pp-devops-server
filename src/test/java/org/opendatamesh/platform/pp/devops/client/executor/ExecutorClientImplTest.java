@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskRunCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskCancelCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ExecutorParametersRes;
 import org.opendatamesh.platform.pp.devops.utils.client.RestUtilsFactory;
@@ -71,11 +73,10 @@ class ExecutorClientImplTest {
             ExecutorParametersRes executorParameters = new ExecutorParametersRes();
             executorParameters.setRepositoryKey("repo-key");
             String providerRunId = "run 1";
-            ExecutorTaskRunCommandRes runCommand = new ExecutorTaskRunCommandRes(executorParameters, providerRunId);
             client.startTask(new ExecutorTaskStartCommandRes());
-            client.getTaskStatus(runCommand);
-            client.getTaskLogs(runCommand);
-            client.cancelTask(runCommand);
+            client.getTaskStatus(new ExecutorTaskStatusCommandRes(executorParameters, providerRunId));
+            client.getTaskLogs(new ExecutorTaskLogsCommandRes(executorParameters, providerRunId));
+            client.cancelTask(new ExecutorTaskCancelCommandRes(executorParameters, providerRunId));
 
             assertThat(requests).hasSize(4);
             assertThat(requests).allSatisfy(request -> assertThat(request.method()).isEqualTo("POST"));

@@ -5,7 +5,8 @@ import org.opendatamesh.platform.pp.devops.activity.entities.TaskLog;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClient;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsRes;
-import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskRunCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsCommandRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
@@ -63,7 +64,7 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
 
     @Override
     public ExecutorRunStatus readRunStatus(Task task) {
-        ExecutorTaskStatusRes status = client(task).getTaskStatus(runCommand(task));
+        ExecutorTaskStatusRes status = client(task).getTaskStatus(statusCommand(task));
         if (status == null || !StringUtils.hasText(status.getStatus())) {
             logger.warn("Executor status is missing for task {}", task.getUuid());
             return ExecutorRunStatus.FAILED;
@@ -92,7 +93,7 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
 
     @Override
     public Optional<TaskLog> readRunLog(Task task) {
-        ExecutorTaskLogsRes logs = client(task).getTaskLogs(runCommand(task));
+        ExecutorTaskLogsRes logs = client(task).getTaskLogs(logsCommand(task));
         if (logs == null || !StringUtils.hasText(logs.getContent())) {
             return Optional.empty();
         }
@@ -119,8 +120,15 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
         return executorClientFactory.getExecutorClient(task.getExecutorName(), task.getActivity().getUuid());
     }
 
-    private ExecutorTaskRunCommandRes runCommand(Task task) {
-        return new ExecutorTaskRunCommandRes(
+    private ExecutorTaskStatusCommandRes statusCommand(Task task) {
+        return new ExecutorTaskStatusCommandRes(
+                taskMapper.jsonNodeToExecutorParameters(task.getExecutorParameters()),
+                task.getProviderRunId()
+        );
+    }
+
+    private ExecutorTaskLogsCommandRes logsCommand(Task task) {
+        return new ExecutorTaskLogsCommandRes(
                 taskMapper.jsonNodeToExecutorParameters(task.getExecutorParameters()),
                 task.getProviderRunId()
         );

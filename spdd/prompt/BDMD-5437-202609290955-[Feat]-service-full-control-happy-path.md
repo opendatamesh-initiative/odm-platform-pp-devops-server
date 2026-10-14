@@ -1,6 +1,6 @@
 # DevOps 2.0 full-control happy path: execute, auto-approve, run on the executor, advance
 
-> **Superseded in part by BDMD-5099** (`odm-platform-adapter-devops-executor-gitlab/spdd/prompt/BDMD-5099-202610141700-[Feat]-service-gitlab-devops-executor.md`, 2026-10-14). Every executor call is now `POST` and carries `executorParameters`. Status, logs and cancel share the body `ExecutorTaskRunCommandRes { executorParameters, providerRunId }`. The operations below are updated to match the code.
+> **Superseded in part by BDMD-5099** (`odm-platform-adapter-devops-executor-gitlab/spdd/prompt/BDMD-5099-202610141700-[Feat]-service-gitlab-devops-executor.md`, 2026-10-14). Every executor call is now `POST` and carries `executorParameters`. Status, logs and cancel send `{ executorParameters, providerRunId }`, each through its own request class (`ExecutorTaskStatusCommandRes`, `ExecutorTaskLogsCommandRes`, `ExecutorTaskCancelCommandRes`). The operations below are updated to match the code.
 
 ## Requirements
 
@@ -305,14 +305,14 @@ Execute the tasks in this order. Packages are relative to `org.opendatamesh.plat
 
 ### 10. Create executor client — `client.executor`
 
-1. `ExecutorClient` interface: `ExecutorTaskStartResultRes startTask(ExecutorTaskStartCommandRes command)`, `ExecutorTaskStatusRes getTaskStatus(ExecutorTaskRunCommandRes command)`, `ExecutorTaskLogsRes getTaskLogs(ExecutorTaskRunCommandRes command)` (BDMD-5099).
+1. `ExecutorClient` interface: `ExecutorTaskStartResultRes startTask(ExecutorTaskStartCommandRes command)`, `ExecutorTaskStatusRes getTaskStatus(ExecutorTaskStatusCommandRes command)`, `ExecutorTaskLogsRes getTaskLogs(ExecutorTaskLogsCommandRes command)` (BDMD-5099).
 2. `ExecutorClientFactory` interface: `ExecutorClient getExecutorClient(String executorName, String activityUuid)`.
 3. Resources in `client.executor.resources`: `ExecutorTaskStartCommandRes { ExecutorParametersRes executorParameters; Map<String, String> pipelineParameters; }`, `ExecutorTaskStartResultRes { String providerRunId; }`, `ExecutorTaskStatusRes { String providerRunId; String status; }`, `ExecutorTaskLogsRes { String content; Date generatedAt; }`. No activity or task identifiers anywhere.
 4. `ExecutorClientImpl` (package-private constructor, like `NotificationClientImpl`): holds `address`, the secret headers as `List<HttpHeader>`, and `RestUtils`.
    - `startTask` → `restUtils.genericPost(address + "/api/v2/up/executor/tasks/start", headers, command, ExecutorTaskStartResultRes.class)`.
    - `getTaskStatus` → `restUtils.genericPost(address + "/api/v2/up/executor/tasks/status", headers, command, ExecutorTaskStatusRes.class)` (BDMD-5099; was a `GET` with a query parameter).
    - `getTaskLogs` → `restUtils.genericPost(address + "/api/v2/up/executor/tasks/logs", headers, command, ExecutorTaskLogsRes.class)` (BDMD-5099).
-   - The command is `ExecutorTaskRunCommandRes { executorParameters; providerRunId }`, built by the Execute Task executor port from the task's stored executor parameters and run id.
+   - Each command (`ExecutorTaskStatusCommandRes`, `ExecutorTaskLogsCommandRes`, both `{ executorParameters; providerRunId }`) is built by the Execute Task executor port from the task's stored executor parameters and run id.
 5. `ExecutorClientFactoryImpl` (package-private): `getExecutorClient` resolves the address from `ExecutorServicesProperties` (`NotFoundException("Executor " + name + " is not declared")` if missing), reads `ExecutorSecretsStore.find(executorName, activityUuid)`, and returns a new `ExecutorClientImpl`.
 6. `ExecutorClientConfig`: `@Configuration`, `@Bean ExecutorClientFactory executorClientFactory(RestTemplateBuilder, ExecutorServicesProperties, ExecutorSecretsStore)` building `RestUtilsFactory.getRestUtils(restTemplateBuilder.build())`. No dummy fallback.
 
