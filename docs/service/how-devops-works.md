@@ -275,8 +275,8 @@ DevOps checks only what every tool needs. Requirements specific to one tool (for
 **How tool statuses are reported.** Each executor maps its tool's statuses to the common vocabulary:
 
 - a run waiting for a person or a resource (for example, a manual approval in the tool) is reported as *running*, so DevOps keeps waiting;
-- a run stopped because DevOps asked the executor to stop it is reported as *canceled*;
-- any other unsuccessful ending (timed out, skipped, stopped directly in the tool, and so on) is reported as *failed*.
+- a run stopped because DevOps asked the executor to stop it, or canceled directly in the tool, is reported as *canceled*;
+- any other unsuccessful ending (timed out, skipped, and so on) is reported as *failed*.
 
 **Credentials (secrets).** Most tools need credentials, such as an API token. In full control:
 

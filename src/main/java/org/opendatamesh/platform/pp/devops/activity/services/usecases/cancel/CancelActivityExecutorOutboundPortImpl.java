@@ -3,10 +3,12 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.cancel;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClient;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskRunCommandRes;
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,11 +19,14 @@ class CancelActivityExecutorOutboundPortImpl implements CancelActivityExecutorOu
 
     private final ExecutorClientFactory executorClientFactory;
     private final ExecutorServicesProperties executorServicesProperties;
+    private final TaskMapper taskMapper;
 
     CancelActivityExecutorOutboundPortImpl(ExecutorClientFactory executorClientFactory,
-                                           ExecutorServicesProperties executorServicesProperties) {
+                                           ExecutorServicesProperties executorServicesProperties,
+                                           TaskMapper taskMapper) {
         this.executorClientFactory = executorClientFactory;
         this.executorServicesProperties = executorServicesProperties;
+        this.taskMapper = taskMapper;
     }
 
     @Override
@@ -36,10 +41,10 @@ class CancelActivityExecutorOutboundPortImpl implements CancelActivityExecutorOu
         ExecutorClient client = executorClientFactory.getExecutorClient(task.getExecutorName(), task.getActivity().getUuid());
         for (int attempt = 1; attempt <= MAX_CALLS; attempt++) {
             try {
-                client.cancelTask(task.getProviderRunId());
+                client.cancelTask(runCommand(task));
                 return CancelRunResult.POSTED;
             } catch (ClientException exception) {
-                if (exception.getCode() >= 400 && exception.getCode() <= 499) {
+                if (exception.getCode() == 404 || exception.getCode() == 409) {
                     return CancelRunResult.ALREADY_FINISHED;
                 }
                 logger.warn("Executor cancel failed for task {} on attempt {} with status {}",
@@ -49,5 +54,12 @@ class CancelActivityExecutorOutboundPortImpl implements CancelActivityExecutorOu
             }
         }
         return CancelRunResult.UNREACHABLE;
+    }
+
+    private ExecutorTaskRunCommandRes runCommand(Task task) {
+        return new ExecutorTaskRunCommandRes(
+                taskMapper.jsonNodeToExecutorParameters(task.getExecutorParameters()),
+                task.getProviderRunId()
+        );
     }
 }

@@ -1,5 +1,7 @@
 # DevOps 2.0 full-control happy path: execute, auto-approve, run on the executor, advance
 
+> **Superseded in part by BDMD-5099** (`odm-platform-adapter-devops-executor-gitlab/spdd/prompt/BDMD-5099-202610141700-[Feat]-service-gitlab-devops-executor.md`, 2026-10-14). Every executor call is now `POST` and carries `executorParameters`. Status, logs and cancel share the body `ExecutorTaskRunCommandRes { executorParameters, providerRunId }`. The operations below are updated to match the code.
+
 ## Requirements
 
 - Let the UI execute a named activity of a data product version in **full-control** mode: DevOps creates the activity and its tasks, has each step approved, runs the tasks one after the other on the executor they name, follows each run until it ends, stores its log, and closes the activity as succeeded or failed.
@@ -303,14 +305,14 @@ Execute the tasks in this order. Packages are relative to `org.opendatamesh.plat
 
 ### 10. Create executor client — `client.executor`
 
-1. `ExecutorClient` interface: `ExecutorTaskStartResultRes startTask(ExecutorTaskStartCommandRes command)`, `ExecutorTaskStatusRes getTaskStatus(String providerRunId)`, `ExecutorTaskLogsRes getTaskLogs(String providerRunId)`.
+1. `ExecutorClient` interface: `ExecutorTaskStartResultRes startTask(ExecutorTaskStartCommandRes command)`, `ExecutorTaskStatusRes getTaskStatus(ExecutorTaskRunCommandRes command)`, `ExecutorTaskLogsRes getTaskLogs(ExecutorTaskRunCommandRes command)` (BDMD-5099).
 2. `ExecutorClientFactory` interface: `ExecutorClient getExecutorClient(String executorName, String activityUuid)`.
 3. Resources in `client.executor.resources`: `ExecutorTaskStartCommandRes { ExecutorParametersRes executorParameters; Map<String, String> pipelineParameters; }`, `ExecutorTaskStartResultRes { String providerRunId; }`, `ExecutorTaskStatusRes { String providerRunId; String status; }`, `ExecutorTaskLogsRes { String content; Date generatedAt; }`. No activity or task identifiers anywhere.
 4. `ExecutorClientImpl` (package-private constructor, like `NotificationClientImpl`): holds `address`, the secret headers as `List<HttpHeader>`, and `RestUtils`.
    - `startTask` → `restUtils.genericPost(address + "/api/v2/up/executor/tasks/start", headers, command, ExecutorTaskStartResultRes.class)`.
-   - `getTaskStatus` → `GET address + "/api/v2/up/executor/tasks/status?providerRunId={encoded}"` via `genericGet`, `ExecutorTaskStatusRes.class`.
-   - `getTaskLogs` → `GET address + "/api/v2/up/executor/tasks/logs?providerRunId={encoded}"`, `ExecutorTaskLogsRes.class`.
-   - Encode `providerRunId` with `UriUtils.encodeQueryParam(..., UTF_8)`.
+   - `getTaskStatus` → `restUtils.genericPost(address + "/api/v2/up/executor/tasks/status", headers, command, ExecutorTaskStatusRes.class)` (BDMD-5099; was a `GET` with a query parameter).
+   - `getTaskLogs` → `restUtils.genericPost(address + "/api/v2/up/executor/tasks/logs", headers, command, ExecutorTaskLogsRes.class)` (BDMD-5099).
+   - The command is `ExecutorTaskRunCommandRes { executorParameters; providerRunId }`, built by the Execute Task executor port from the task's stored executor parameters and run id.
 5. `ExecutorClientFactoryImpl` (package-private): `getExecutorClient` resolves the address from `ExecutorServicesProperties` (`NotFoundException("Executor " + name + " is not declared")` if missing), reads `ExecutorSecretsStore.find(executorName, activityUuid)`, and returns a new `ExecutorClientImpl`.
 6. `ExecutorClientConfig`: `@Configuration`, `@Bean ExecutorClientFactory executorClientFactory(RestTemplateBuilder, ExecutorServicesProperties, ExecutorSecretsStore)` building `RestUtilsFactory.getRestUtils(restTemplateBuilder.build())`. No dummy fallback.
 
@@ -491,7 +493,7 @@ Execute the tasks in this order. Packages are relative to `org.opendatamesh.plat
    - `start(request, headerNames)`: `providerRunId = "starter-" + UUID`; duration = `starter.durationSeconds` pipeline parameter if a non-negative integer, else default; outcome = `starter.outcome` if `SUCCEEDED` or `FAILED` (case-insensitive), else default.
    - `status(id)`: `RUNNING` until `startedAt + duration`, then the planned outcome. Unknown id → `ResponseStatusException(NOT_FOUND)`.
    - `logs(id)`: one block listing run id, repository name, `repositoryKey`, ref name and type, pipeline identifier, pipeline parameters as received, secret header **names**, start and end, outcome; `generatedAt` = now. Unknown id → 404.
-7. `controller.ExecutorController`: `@RequestMapping("/api/v2/up/executor/tasks")`; `POST /start` (`@RequestBody`, `@RequestHeader HttpHeaders`; no `@Valid` and no `@NotNull` on `TaskStartCommandRes`; missing `executorParameters` → `ResponseStatusException(BAD_REQUEST, "executorParameters is required")`, and that name is in the response body; collects names of headers starting with `x-odm-`); `GET /status?providerRunId=`; `GET /logs?providerRunId=`. Log one info line per call with the run id only. Never log header values.
+7. `controller.ExecutorController`: `@RequestMapping("/api/v2/up/executor/tasks")`; `POST /start` (`@RequestBody`, `@RequestHeader HttpHeaders`; no `@Valid` and no `@NotNull` on `TaskStartCommandRes`; missing `executorParameters` → `ResponseStatusException(BAD_REQUEST, "executorParameters is required")`, and that name is in the response body; collects names of headers starting with `x-odm-`); `POST /status` and `POST /logs` with body `{ executorParameters, providerRunId }` (BDMD-5099; were `GET` with a query parameter). Log one info line per call with the run id only. Never log header values.
 8. `README.md`: rewrite for v2 (endpoints, simulation defaults and the two reserved pipeline parameters, the DevOps configuration snippet of Operation 20).
 
 ### 23. High-level tests (Gherkin)
@@ -770,7 +772,7 @@ Test locations: `ActivityUseCaseControllerIT` and `ActivityFullControlFlowIT` un
    - Under auto-approval DevOps runs whatever the UI sends on any declared executor. Accepted for the happy path.
 4. Integration constraints:
    - Notification must be active for the loop to close; with it inactive the activity stays `PENDING`.
-   - Executor v2 API: `POST {address}/api/v2/up/executor/tasks/start`, `GET .../status?providerRunId=`, `GET .../logs?providerRunId=`. The start body has only `executorParameters` and `pipelineParameters`. Statuses are `RUNNING | SUCCEEDED | FAILED`. `providerRunId` is opaque and at most 255 characters.
+   - Executor v2 API: `POST {address}/api/v2/up/executor/tasks/start`, `POST .../status`, `POST .../logs` (BDMD-5099: all `POST`). The start body has only `executorParameters` and `pipelineParameters`; status and logs send `executorParameters` and `providerRunId`. Statuses are `RUNNING | SUCCEEDED | FAILED`. `providerRunId` is opaque and at most 255 characters.
    - Event envelope: `resourceType = ACTIVITY`, `resourceIdentifier` = activity uuid, `eventTypeVersion = V2.0.0`. Every event's `eventContent.activity` contains the activity `sortOrder`.
    - No call to the Registry. DevOps never parses a descriptor.
 5. Business rule constraints:

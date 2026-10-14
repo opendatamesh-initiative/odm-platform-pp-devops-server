@@ -4,11 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskRunCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
+import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ExecutorParametersRes;
 import org.opendatamesh.platform.pp.devops.utils.client.RestUtilsFactory;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpHeader;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriUtils;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -30,12 +31,14 @@ class ExecutorClientImplTest {
     /**
      * Feature: Executor client
      *
-     * Scenario: The client calls the executor v2 API with the cached secret headers
+     * Scenario: The client calls the executor v2 API with POST and the cached secret headers
      *   Given executor "starter" at address A and the secret x-odm-token cached for an activity
      *   When the client starts a run, reads its status, reads its logs, and cancels it
      *   Then it posts to A/api/v2/up/executor/tasks/start
-     *   And it gets A/api/v2/up/executor/tasks/status and /logs with providerRunId query-encoded
-     *   And cancel posts JSON providerRunId
+     *   And it posts to A/api/v2/up/executor/tasks/status and /logs with the run command in the body
+     *   And it posts to A/api/v2/up/executor/tasks/cancel with the run command in the body
+     *   And the run command carries executorParameters and providerRunId
+     *   And no call has a query string
      *   And every call carries the header x-odm-token
      */
     @Test
@@ -65,35 +68,39 @@ class ExecutorClientImplTest {
                     List.of(new HttpHeader("x-odm-token", "cached-secret")),
                     RestUtilsFactory.getRestUtils(new RestTemplate())
             );
+            ExecutorParametersRes executorParameters = new ExecutorParametersRes();
+            executorParameters.setRepositoryKey("repo-key");
             String providerRunId = "run 1";
+            ExecutorTaskRunCommandRes runCommand = new ExecutorTaskRunCommandRes(executorParameters, providerRunId);
             client.startTask(new ExecutorTaskStartCommandRes());
-            client.getTaskStatus(providerRunId);
-            client.getTaskLogs(providerRunId);
-            client.cancelTask(providerRunId);
+            client.getTaskStatus(runCommand);
+            client.getTaskLogs(runCommand);
+            client.cancelTask(runCommand);
 
             assertThat(requests).hasSize(4);
+            assertThat(requests).allSatisfy(request -> assertThat(request.method()).isEqualTo("POST"));
+            assertThat(requests).allSatisfy(request -> assertThat(request.query()).isNull());
             assertThat(requests).allSatisfy(request -> assertThat(request.token()).isEqualTo("cached-secret"));
 
-            assertThat(requests.get(0).method()).isEqualTo("POST");
             assertThat(requests.get(0).path()).isEqualTo("/api/v2/up/executor/tasks/start");
 
-            String encodedRunId = UriUtils.encodeQueryParam(providerRunId, StandardCharsets.UTF_8);
-            assertThat(requests.get(1).method()).isEqualTo("GET");
             assertThat(requests.get(1).path()).isEqualTo("/api/v2/up/executor/tasks/status");
-            assertThat(requests.get(1).query()).isEqualTo("providerRunId=" + encodedRunId);
-            assertThat(requests.get(1).query()).doesNotContain(" ");
+            assertRunCommandBody(requests.get(1).body(), providerRunId);
 
-            assertThat(requests.get(2).method()).isEqualTo("GET");
             assertThat(requests.get(2).path()).isEqualTo("/api/v2/up/executor/tasks/logs");
-            assertThat(requests.get(2).query()).isEqualTo("providerRunId=" + encodedRunId);
+            assertRunCommandBody(requests.get(2).body(), providerRunId);
 
-            assertThat(requests.get(3).method()).isEqualTo("POST");
             assertThat(requests.get(3).path()).isEqualTo("/api/v2/up/executor/tasks/cancel");
-            JsonNode cancelBody = OBJECT_MAPPER.readTree(requests.get(3).body());
-            assertThat(cancelBody.get("providerRunId").asText()).isEqualTo(providerRunId);
+            assertRunCommandBody(requests.get(3).body(), providerRunId);
         } finally {
             server.stop(0);
         }
+    }
+
+    private static void assertRunCommandBody(String body, String providerRunId) throws Exception {
+        JsonNode json = OBJECT_MAPPER.readTree(body);
+        assertThat(json.get("providerRunId").asText()).isEqualTo(providerRunId);
+        assertThat(json.get("executorParameters").get("repositoryKey").asText()).isEqualTo("repo-key");
     }
 
     private static byte[] responseBody(String path) {

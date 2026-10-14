@@ -2,6 +2,7 @@ package org.opendatamesh.platform.pp.devops.rest.v2.mocks;
 
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClient;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskLogsRes;
+import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskRunCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
@@ -140,15 +141,15 @@ public class ScriptedExecutor implements ExecutorClient {
     }
 
     @Override
-    public void cancelTask(String providerRunId) {
-        canceledRunIds.add(providerRunId);
+    public void cancelTask(ExecutorTaskRunCommandRes command) {
+        canceledRunIds.add(command.getProviderRunId());
         if (cancelFailure != null) {
             throw cancelFailure;
         }
     }
 
     @Override
-    public ExecutorTaskStatusRes getTaskStatus(String providerRunId) {
+    public ExecutorTaskStatusRes getTaskStatus(ExecutorTaskRunCommandRes command) {
         statusReads.incrementAndGet();
         CountDownLatch entered;
         CountDownLatch release;
@@ -185,7 +186,7 @@ public class ScriptedExecutor implements ExecutorClient {
     }
 
     @Override
-    public ExecutorTaskLogsRes getTaskLogs(String providerRunId) {
+    public ExecutorTaskLogsRes getTaskLogs(ExecutorTaskRunCommandRes command) {
         if (logsFailure != null) {
             throw logsFailure;
         }
