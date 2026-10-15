@@ -1,5 +1,8 @@
 # DevOps 2.0 full-control cancel and error paths
 
+> **Superseded in part by BDMD-5099** (`odm-platform-adapter-devops-executor-gitlab/spdd/prompt/BDMD-5099-202610141700-[Feat]-service-gitlab-devops-executor.md`, 2026-10-14). Every executor call is now `POST` and carries `executorParameters`. Status, logs and cancel send `{ executorParameters, providerRunId }`, each through its own request class (`ExecutorTaskStatusCommandRes`, `ExecutorTaskLogsCommandRes`, `ExecutorTaskCancelCommandRes`). The operations below are updated to match the code.
+> The cancel rule also changed: the executor reports **every** provider cancel as `CANCELED`, including a cancel done directly in the tool, and Cancel Activity treats only 404 and 409 from the executor as "already finished".
+
 ## Requirements
 
 - Let a user cancel an open activity: stop the task that is on the executor, cancel every task that has not started, and return the activity only once it is succeeded, failed, or canceled.
@@ -57,6 +60,7 @@ classDiagram
   }
 
   class ExecutorTaskCancelCommandRes {
+    +ExecutorParametersRes executorParameters
     +String providerRunId
   }
 
@@ -79,7 +83,7 @@ classDiagram
   Task --> ExecutionStatus
   ActivityCancelCommandRes --> Activity : identifies
   Activity --> ActivityCancelResultRes : maps to
-  ExecutorTaskCancelCommandRes --> Task : providerRunId only
+  ExecutorTaskCancelCommandRes --> Task : executor parameters + providerRunId
 ```
 
 No new status, no cancellation flag, and no rejection-reason field. `Activity` and `Task` stay as they are. `ExecutorRunStatus` gains `CANCELED`.
@@ -112,7 +116,7 @@ No new status, no cancellation flag, and no rejection-reason field. `Activity` a
 4. Conflicts and HTTP:
    - Serializable isolation stays. A serialization failure is not retried. On the cancel call it is HTTP 409. On an event handler it fails that notification.
    - An activity that is already terminal when cancel starts is HTTP 400: `Activity <uuid> has already terminated with status <status>`.
-   - A cancel post the executor answers with a 4xx is "the run has already ended". Execute Task records the real status. A post that cannot be reached is tried 3 times in the executor adapter, then HTTP 500, and the long wait does not start. `PENDING` tasks stay `CANCELED`.
+   - A cancel post the executor answers with 404 or 409 is "the run has already ended" (BDMD-5099; was any 4xx). Any other client error is a failed attempt. Execute Task records the real status. A post that cannot be reached is tried 3 times in the executor adapter, then HTTP 500, and the long wait does not start. `PENDING` tasks stay `CANCELED`.
    - A late approval or rejection writes nothing and does not fail the notification.
 
 5. Rejection:
@@ -157,8 +161,8 @@ No new status, no cancellation flag, and no rejection-reason field. `Activity` a
 ### 1. Extend the executor client — `client.executor`
 
 1. `ExecutorRunStatus` gains `CANCELED`.
-2. `ExecutorTaskCancelCommandRes`: one field `providerRunId`, JavaBean, `@JsonIgnoreProperties(ignoreUnknown = true)`.
-3. `ExecutorClient.cancelTask(String providerRunId)`: `POST {address}/api/v2/up/executor/tasks/cancel` with that body and the same secret headers as start, status, and logs. No response body is required.
+2. `ExecutorTaskCancelCommandRes`: `executorParameters` and `providerRunId`, JavaBean with empty and all-args constructors, `@JsonIgnoreProperties(ignoreUnknown = true)` (BDMD-5099 added `executorParameters`). Status and logs have their own request classes with the same fields.
+3. `ExecutorClient.cancelTask(ExecutorTaskCancelCommandRes command)`: `POST {address}/api/v2/up/executor/tasks/cancel` with that body and the same secret headers as start, status, and logs. No response body is required.
 4. `ExecutorClientImpl` uses `restUtils.genericPost`. A `ClientException` propagates to the caller. Do not map it to a run status.
 
 ### 2. Replace polling and secrets configuration — `executor`
@@ -227,7 +231,7 @@ Package `activity.services.usecases.cancel`, laid out per `spdd/norms/USE_CASE_I
 4. Ports, plain classes constructed by `CancelActivityFactory` (`@Component`):
    - Persistence: `findActivity` → `activityService.findOne`, then `EntityInitAndDetachService.refresh` of the activity graph (tasks, then each task's logs and results), `save` → `activityService.overwrite`. An unknown uuid stays `NotFoundException` from `findOne`. `findDetached` opens its own read-only read-committed transaction (`REQUIRES_NEW`): `findActivity`, then `initializeEntityAndDetach`. It does not clear the persistence context and it does not write. A serializable read here would share Execute Task's snapshot and could abort the outcome write, which is not retried. `findActivity` only refreshes inside the caller's transaction and leaves the activity managed.
    - Advance: `advanceActivity(String activityUuid)` builds Advance Activity with an empty presenter and runs it.
-   - Executor: `CancelRunResult cancelRun(Task task)` with `POSTED`, `ALREADY_FINISHED`, `UNREACHABLE`. The impl gets the client from `ExecutorClientFactory` and calls `cancelTask(providerRunId)`. `ClientException` with code 400–499 → `ALREADY_FINISHED`. Any other `ClientException`, and a thrown client failure, is retried up to 3 calls total, then `UNREACHABLE`. Log the attempt and, for a `ClientException`, the HTTP status. Do not log the response body or request headers. The 3 calls are in this adapter, not a database retry.
+   - Executor: `CancelRunResult cancelRun(Task task)` with `POSTED`, `ALREADY_FINISHED`, `UNREACHABLE`. The impl gets the client from `ExecutorClientFactory` and calls `cancelTask` with an `ExecutorTaskCancelCommandRes` built from the task's executor parameters (via `TaskMapper`, injected in `CancelActivityFactory`) and its run id. `ClientException` with code 404 or 409 → `ALREADY_FINISHED` (BDMD-5099; was 400–499). Any other `ClientException`, and a thrown client failure, is retried up to 3 calls total, then `UNREACHABLE`. Log the attempt and, for a `ClientException`, the HTTP status. Do not log the response body or request headers. The 3 calls are in this adapter, not a database retry.
    - Polling: `int maxStatusReads()`, `void waitOnePollInterval()` (the configured interval), `void waitOneSecond()` (one second, for the id wait only). Interrupt → `InternalException("Interrupted while waiting to read executor status")`.
 5. `execute()`:
    - Validate the command.
@@ -260,7 +264,7 @@ Package `activity.services.usecases.cancel`, laid out per `spdd/norms/USE_CASE_I
    - Unknown id → `ResponseStatusException(NOT_FOUND, "Unknown providerRunId")`.
    - The run's planned end (`startedAt + plannedDuration`) is already past, and it was not canceled → `ResponseStatusException(CONFLICT, "Run has already ended")`. Do not change `plannedOutcome`.
    - Otherwise mark the run canceled. `status` returns `CANCELED` from then on, including before the planned end.
-2. `ExecutorController`: `POST /cancel`, body `providerRunId` (a small request type, ignore unknown properties). Log the run id only. Never log header values.
+2. `ExecutorController` (now `ExecutorTaskController`): `POST /cancel`, body `{ executorParameters, providerRunId }` (`TaskRunCommandRes` since BDMD-5099; missing `executorParameters` or `providerRunId` → 400). Log the run id only. Never log header values.
 3. `ExecutorControllerIT`: a running run (duration long enough that it is still `RUNNING`) becomes `CANCELED` after cancel. A run that has already reached `SUCCEEDED` or `FAILED` answers 409 and the following status read is unchanged. An unknown id answers 404.
 
 ### 11. Reload and detach the activity graph — `utils.services`

@@ -2,6 +2,8 @@
 
 Story **BDMD-5437** (epic **BDMD-5097**). It depends on **BDMD-5436** (anemic CRUD for Activity and Task).
 
+**Revision 12 (2026-10-14), superseded in part by BDMD-5099.** DD-33's rule "DevOps sends only the `providerRunId` to the status and log reads" is reversed: every executor call is `POST` with `executorParameters`, and executors are stateless. The provider run id stays opaque to DevOps. DD-35's "a provider cancellation is `FAILED`" was already changed by BDMD-5440 and is changed again by BDMD-5099: every provider cancel is `CANCELED`.
+
 **Revision 3 (2026-09-25, after the design checkpoint).** The design is confirmed. This revision records:
 
 - the checkpoint decisions: use-case renames, secrets, specification-agnostic input, parameter groups, and simpler polling;
@@ -325,7 +327,7 @@ The process is a chain of atomic use cases, laid out like the Registry use-case 
 - **DD-33: The provider run id is opaque and owned by the executor** *(new, I-17)*.
   - Every provider needs more than a run id to read a run's status and logs: owner and repository, project id, organization with project and pipeline id, or workspace with repository.
   - The executor keeps those coordinates from the start call, either stored on its side or encoded in the id. The id must fit in 255 characters.
-  - DevOps sends only the `providerRunId` to the status and log reads, and never interprets it. DevOps stays stateless towards the executor.
+  - DevOps sends only the `providerRunId` to the status and log reads, and never interprets it. DevOps stays stateless towards the executor. *Superseded by BDMD-5099: status, logs and cancel also send the task's `executorParameters`; DevOps still never interprets the id.*
 - **DD-34: The executor parameters type, and what DevOps checks** *(new, I-18, I-21)*.
   - **Shape:** `repository` (the Registry repository fields, with the names of `DataProductRepoRes`), `ref` (`name`, and `type` = `TAG` or `BRANCH`), one provider-neutral `pipelineIdentifier`, and an optional `repositoryKey` so the Policy service can check which repository a task targets.
   - **One neutral pipeline identifier**, not one field per provider. Each executor interprets it: the workflow file or id on GitHub, the pipeline id on Azure, the custom pipeline name on Bitbucket, and nothing on GitLab.

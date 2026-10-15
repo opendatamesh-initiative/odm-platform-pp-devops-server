@@ -166,9 +166,14 @@ odm:
         starter:
           address: http://localhost:9080
           execution-mode: full-control
+        gitlab:
+          address: http://odm-platform-adapter-devops-executor-gitlab:9080
+          execution-mode: full-control
         cli:
           execution-mode: instrumented
 ```
+
+The `gitlab` example is a full-control executor that runs each task as a GitLab CI/CD pipeline.
 
 ### Full-control polling
 
@@ -185,6 +190,8 @@ On execute, a secret for one executor arrives as a request header named `x-odm-<
 | Property | Purpose | Default |
 | --- | --- | --- |
 | `odm.utility-plane.executors.secrets-ttl` | How long a secret stays in memory | `1h` |
+
+Set `secrets-ttl` to longer than your longest pipeline. DevOps keeps polling a full-control task, and cancels it if needed, only while its secrets are still in memory. If the secrets expire first, the run can no longer be followed or stopped from DevOps.
 
 Executor parameters and pipeline parameters are not secret. They are stored, returned, and included in events. Pipeline parameter values may contain placeholders; those are filled in only when a task is about to start.
 

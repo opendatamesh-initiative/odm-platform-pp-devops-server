@@ -22,6 +22,8 @@ The goal is to check that every step has the data it needs before the REASONS Ca
 - No interface question is open.
 - Java signatures are illustrative. They show names, inputs, and outputs, not final code.
 
+**Revision 10 (2026-10-14), superseded in part by BDMD-5099.** I-17 is reversed. Every executor call is now `POST` with `executorParameters` in the body; status, logs and cancel send `{ executorParameters, providerRunId }`. Executors can therefore be stateless: they no longer keep or encode the run's coordinates. The §9.5 table and the §9.7 starter rows below are kept as the decision record of BDMD-5437 and are marked where they no longer hold.
+
 **Revision 4 (2026-09-30).** The task execution columns are part of `activities_tasks` in Flyway `V1__init_schema.sql`. There is no `V2` migration. The analysis is at revision 7.
 
 **Revision 5 (2026-09-30).** `Task.pipelineParameters` is a `String` column. `TaskMapper` converts that JSON. I-03 and I-18 are updated. The starter's empty start call names `executorParameters` in the 400 body. The analysis is at revision 8.
@@ -207,7 +209,7 @@ private Map<String, String> pipelineParameters;
 | Emitted | Requested and completion events (DD-24) | As stored. The Policy service checks them against the descriptor | As stored |
 | Resolved | S7, just before start (DD-21) | Not resolved | `${…}` replaced from earlier results. Unresolved placeholders are left unchanged |
 | **Used** | **S7 `startRun`** | **Sent unchanged** in `ExecutorTaskStartCommandRes` | **Resolved values sent** in `ExecutorTaskStartCommandRes` |
-| Not used | S7 status and log reads | Only `providerRunId` is sent **[I-17]** | — |
+| Not used | S7 status and log reads | Only `providerRunId` is sent **[I-17]** — *superseded by BDMD-5099: executor parameters are sent unchanged on every executor call* | — |
 
 **Rules.**
 
@@ -889,14 +891,14 @@ public class ExecutorTaskLogsRes         { String content; Date generatedAt; }
 | Call | HTTP |
 |------|------|
 | startTask | `POST {address}/api/v2/up/executor/tasks/start`, body `ExecutorTaskStartCommandRes` → `ExecutorTaskStartResultRes` |
-| getTaskStatus | `GET {address}/api/v2/up/executor/tasks/status?providerRunId=…` → `ExecutorTaskStatusRes` |
-| getTaskLogs | `GET {address}/api/v2/up/executor/tasks/logs?providerRunId=…` → `ExecutorTaskLogsRes` |
+| getTaskStatus | `GET {address}/api/v2/up/executor/tasks/status?providerRunId=…` → `ExecutorTaskStatusRes` — *BDMD-5099: `POST …/status`, body `{ executorParameters, providerRunId }`* |
+| getTaskLogs | `GET {address}/api/v2/up/executor/tasks/logs?providerRunId=…` → `ExecutorTaskLogsRes` — *BDMD-5099: `POST …/logs`, same body* |
 | every call | Headers: the cached secrets, rewritten to `x-odm-<secretType>` |
 
 **Executor obligations** (from the research; to be written into the executor contract):
 
 - **Returning the run id.** Return the run id from `start`. For example, the GitHub executor pins API version `2026-03-10`, or sends `return_run_details: true`. Without that, GitHub's dispatch returns `204` with no run id.
-- **Finding the run later.** Keep enough to find the run again from `providerRunId` alone (I-17).
+- **Finding the run later.** Keep enough to find the run again from `providerRunId` alone (I-17). *Superseded by BDMD-5099: every call carries `executorParameters`, so executors need not keep coordinates.*
 - **One log block.** Aggregate the logs into one block. GitLab logs are per job, Azure per log id, Bitbucket per step.
 - **Status mapping.** Map provider statuses to `RUNNING` / `SUCCEEDED` / `FAILED` (I-23).
 - **Passing pipeline parameters.** Put them on the right channel for the provider:
@@ -1032,7 +1034,7 @@ S1 is the only step that takes data from outside DevOps. Later steps read from t
 
 | # | Question | Decision |
 |---|----------|----------|
-| I-17 | Status and log reads send only `providerRunId`. The research confirms that every provider needs more coordinates to read a run: owner and repository, project id, organization + project + pipeline id, or workspace + repository. | `providerRunId` is opaque and owned by the executor. The executor keeps the coordinates it needs from the start call, stored or encoded in the id, which must fit in 255 characters. DevOps stays stateless towards the executor, and the endpoints keep the draft shape. The starter keeps runs in memory. |
+| I-17 *(superseded by BDMD-5099, 2026-10-14: all executor calls are `POST` with `executorParameters`)* | Status and log reads send only `providerRunId`. The research confirms that every provider needs more coordinates to read a run: owner and repository, project id, organization + project + pipeline id, or workspace + repository. | `providerRunId` is opaque and owned by the executor. The executor keeps the coordinates it needs from the start call, stored or encoded in the id, which must fit in 255 characters. DevOps stays stateless towards the executor, and the endpoints keep the draft shape. The starter keeps runs in memory. |
 | I-18 | Validation at execute | **Executor parameters:** required. `repository.providerType`, `ref.name`, and `ref.type` are required. Other fields are optional, and DevOps does not enforce provider-specific requirements: a missing workflow id is the executor's error. **Pipeline parameters:** a missing map stays null, and a blank key or a null value gives 400. *(updated 2026-09-30, revision 5)* |
 | I-19 | Placeholder resolution details | Only **pipeline parameter values**. Syntax `${<activityName>.results.<taskName>.<path>}` (v1). **Context:** the activities of the same DPV, keeping the latest per name by `createdAt` (any status, including the current activity). Within each activity, the latest task per name by `createdAt`. That task's `TaskResult` rows are parsed as JSON objects, non-JSON rows are ignored, and rows are merged in `generatedAt` order, so the later row wins. **Output:** scalars as text, and objects or arrays as JSON. **Unresolved:** left unchanged, with a warning that logs the placeholder path, not the values. **Stored values:** not modified. The resolved values are sent to the executor and shown in the starter's log. **Availability:** the CLI uploads a task's results from inside that task's pipeline while it runs. Only that pipeline writes that task's results. Execute Task polls until the status is terminal and then reads the logs, so the rows are already stored when the next task resolves placeholders (DD-20). |
 | I-20 | Status of the DPV's other activities in the requested events, for policies such as "dev succeeded before prod" (to be evaluated, final review) | **Defer to the Policy stories.** Auto-approval does not need it, and the Policy service can read `GET /activities?dataProductVersionUuid=…`. The shape if added later: `eventContent.dataProductVersionActivities[] = { uuid, name, sortOrder, status, createdAt, finishedAt }`, latest per name, without tasks. |
