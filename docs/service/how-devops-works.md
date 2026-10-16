@@ -349,7 +349,7 @@ A refusal is recorded as a failure, not as a cancellation. Cancellation is alway
 ### Details
 
 - **What a policy sees.** Each approval request contains the activity, its position in the lifecycle, and the data product version it belongs to. A task request also contains the task, with its executor, pipeline location, and pipeline inputs. Credentials are never included.
-- **What a policy does not see.** DevOps does not send the descriptor, nor the status of the version's other activities. A Policy service that needs them reads them from the Registry and from DevOps.
+- **What a policy does not see.** DevOps does not send the descriptor. The approval messages themselves do not list the other activities of the version, nor the other tasks of an activity. The document sent to a Policy service at version 1 is different: it adds them (see [Events](events.md#what-messages-never-contain)). A Policy service that needs anything else reads it from the Registry.
 - **Automatic approval is a trust gap.** With the Policy service inactive, DevOps runs whatever it is asked to run, on any declared executor. Use it for development and demos, and activate the Policy service wherever governance matters.
 - **Message names.** The exact messages DevOps publishes and expects are listed in [Events](events.md).
 - How to turn the Policy service on or off: [Configuration](../setup/configuration.md#policy-service).

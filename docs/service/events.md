@@ -56,6 +56,8 @@ A task approval is requested in the same way in both execution modes. For a full
 - Logs and results of the tasks.
 - The other activities of the same data product version.
 
+The document that DevOps sends to the Policy service at version 1 is built from these messages, and it does include the other activities of the version (for an activity request) and the results of the activity's tasks (for a task request). Logs stay out. See [How DevOps works](how-devops-works.md#6-policies-approving-executions).
+
 Pipeline locations and pipeline inputs do appear in approval requests, so the Policy service can check them. They are not secret.
 
 ---
