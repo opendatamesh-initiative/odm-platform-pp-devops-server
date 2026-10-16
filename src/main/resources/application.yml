@@ -10,10 +10,12 @@ devops:
 odm:
   product-plane:
     notification-service:
-      address: http://localhost:8001
       active: false
+      address: http://localhost:8001
     policy-service:
       active: false
+      version: 1
+      address: http://localhost:8005
   utility-plane:
     executors:
       polling-interval: 30s

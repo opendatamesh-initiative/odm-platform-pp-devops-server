@@ -12,10 +12,12 @@ spring:
 odm:
   product-plane:
     notification-service:
-      address: http://localhost:8006
       active: true
+      address: http://localhost:8006
     policy-service:
       active: false
+      version: 1
+      address: http://localhost:8005
   utility-plane:
     executors:
       services:
