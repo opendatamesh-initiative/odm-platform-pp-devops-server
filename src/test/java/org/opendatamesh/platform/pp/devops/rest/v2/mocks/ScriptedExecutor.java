@@ -8,6 +8,7 @@ import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTas
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartCommandRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -131,8 +132,15 @@ public class ScriptedExecutor implements ExecutorClient {
         return !canceledRunIds().isEmpty();
     }
 
+    private static void requireExecutorParameters(Object executorParameters) {
+        if (executorParameters == null) {
+            throw new ClientException(400, "executorParameters is required");
+        }
+    }
+
     @Override
     public ExecutorTaskStartResultRes startTask(ExecutorTaskStartCommandRes command) {
+        requireExecutorParameters(command.getExecutorParameters());
         starts.add(command);
         if (startFailure != null) {
             throw startFailure;
@@ -144,6 +152,7 @@ public class ScriptedExecutor implements ExecutorClient {
 
     @Override
     public void cancelTask(ExecutorTaskCancelCommandRes command) {
+        requireExecutorParameters(command.getExecutorParameters());
         canceledRunIds.add(command.getProviderRunId());
         if (cancelFailure != null) {
             throw cancelFailure;
@@ -152,6 +161,7 @@ public class ScriptedExecutor implements ExecutorClient {
 
     @Override
     public ExecutorTaskStatusRes getTaskStatus(ExecutorTaskStatusCommandRes command) {
+        requireExecutorParameters(command.getExecutorParameters());
         statusReads.incrementAndGet();
         CountDownLatch entered;
         CountDownLatch release;
@@ -189,6 +199,7 @@ public class ScriptedExecutor implements ExecutorClient {
 
     @Override
     public ExecutorTaskLogsRes getTaskLogs(ExecutorTaskLogsCommandRes command) {
+        requireExecutorParameters(command.getExecutorParameters());
         if (logsFailure != null) {
             throw logsFailure;
         }
