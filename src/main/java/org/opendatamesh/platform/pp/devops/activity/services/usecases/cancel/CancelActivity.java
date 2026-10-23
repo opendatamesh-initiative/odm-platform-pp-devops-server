@@ -1,5 +1,6 @@
 package org.opendatamesh.platform.pp.devops.activity.services.usecases.cancel;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
@@ -191,7 +192,8 @@ class CancelActivity implements UseCase {
     private TaskSnapshot readTask(String taskUuid) {
         Activity activity = loadActivity(command.activityUuid());
         Task task = findTask(activity, taskUuid);
-        return new TaskSnapshot(task.getUuid(), task.getExecutorName(), task.getProviderRunId(), task.getStatus());
+        return new TaskSnapshot(task.getUuid(), task.getExecutorName(), task.getExecutorParameters(),
+                task.getProviderRunId(), task.getStatus());
     }
 
     private Task findTask(Activity activity, String taskUuid) {
@@ -248,13 +250,15 @@ class CancelActivity implements UseCase {
     private record ClassifiedRunningTask(String taskUuid, RunningTaskKind kind) {
     }
 
-    private record TaskSnapshot(String taskUuid, String executorName, String providerRunId, ExecutionStatus status) {
+    private record TaskSnapshot(String taskUuid, String executorName, JsonNode executorParameters,
+                                String providerRunId, ExecutionStatus status) {
         private Task asTask(String activityUuid) {
             Activity activity = new Activity();
             activity.setUuid(activityUuid);
             Task task = new Task();
             task.setUuid(taskUuid);
             task.setExecutorName(executorName);
+            task.setExecutorParameters(executorParameters);
             task.setProviderRunId(providerRunId);
             task.setStatus(status);
             task.setActivity(activity);
