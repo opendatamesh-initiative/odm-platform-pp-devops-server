@@ -212,7 +212,6 @@ No requirement ambiguity is still open.
 - **Id encoding.** The adapter pins UTF-8. The library uses the platform default. The unit test vectors catch a change (DD-7).
 - **Deployment order.** DevOps sends `otherActivities` and `activity.tasks` with every request. A Policy server without DD-11 still stores them, but any filter on these names fails there. Deploy the Policy change first, then the DevOps change, or accept the fail-closed rejections in between.
 - **Cost per request.** An activity request reads all activities of the version. A task request reads the activity with its tasks and results. Both are small in practice. The results are not bounded (see Known Limitations).
-- **Time format.** The policy input and the events use the same ISO-8601 format. A policy that compares dates compares text. Compare with a fixed format.
 - **Filters that rely on the removed V1 behaviour.** Nothing lists the existing policies that filter on these names. Review them before the Policy change is released (see Open Items).
 
 ### Open Items for REASONS

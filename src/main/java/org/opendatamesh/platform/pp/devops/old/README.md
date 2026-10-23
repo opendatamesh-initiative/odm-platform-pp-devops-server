@@ -106,7 +106,71 @@ The `afterState` document is built by `PolicyV1InputEnricher` from the V2 event 
 - `logs` is removed from every task. The requested task has no results yet, so its `results` is `[]`.
 - All other activity fields come from the event unchanged.
 
-**Dates.** Every date in the document (`startedAt`, `finishedAt`, `generatedAt`) is an ISO-8601 text value with milliseconds and a UTC offset, for example `2026-10-15T15:19:00.123+00:00`. It is the same format the notification event serialization uses. No epoch numbers are mixed in.
+### OPA policy examples
+
+Two use cases written as OPA policies on the policy input above. The policy `name` must equal the Rego `package`.
+
+**1. `prod` only after `dev` succeeded** (`ACTIVITY_EXECUTION_RESULT`, blocking). Reads `otherActivities`. Only the activities of the same data product version count.
+
+```rego
+package prod_after_dev
+
+import rego.v1
+
+dev_succeeded if {
+	some a in input.afterState.otherActivities
+	a.name == "dev"
+	a.status == "SUCCEEDED"
+}
+
+allowed if input.afterState.activity.name != "prod"
+
+allowed if {
+	input.afterState.activity.name == "prod"
+	dev_succeeded
+}
+
+# The validator reads `result.allow`. Do not use `default allow := false`:
+allow := true if allowed
+allow := false if not allowed
+```
+
+**2. `apply` only if the Terraform plan has no breaking changes** (`TASK_EXECUTION_RESULT`, blocking). The `plan` task stores the output of `terraform show -json` as its result. When the `apply` task is requested, the policy reads that result from `activity.tasks[*].results`, and allows the task only if the plan deletes nothing. A replacement counts as a deletion. A missing plan, a plan that did not succeed, or a result that is not valid JSON blocks the task.
+
+```rego
+package terraform_apply_no_breaking_changes
+
+import rego.v1
+
+# The results of the earlier "plan" task. Each result is the JSON of `terraform show -json`.
+plans contains plan if {
+	some t in input.afterState.activity.tasks
+	t.name == "plan"
+	t.sortOrder < input.afterState.task.sortOrder
+	t.status == "SUCCEEDED"
+	some r in t.results
+	plan := json.unmarshal(r.content)
+}
+
+# A change is breaking when it deletes a resource. A replacement is ["delete", "create"].
+breaking if {
+	some plan in plans
+	some rc in plan.resource_changes
+	"delete" in rc.change.actions
+}
+
+allowed if input.afterState.task.name != "apply"
+
+allowed if {
+	input.afterState.task.name == "apply"
+	count(plans) > 0
+	not breaking
+}
+
+allow := true if allowed
+
+allow := false if not allowed
+```
 
 ### Known limitations
 
