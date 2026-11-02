@@ -124,8 +124,9 @@ public class ActivityUseCasesService {
 
     public ActivityTaskCommandResultRes recordTaskLogs(ActivityTaskLogsCommandRes commandRes) {
         RecordTaskLogsCommand command = commandRes == null
-                ? new RecordTaskLogsCommand(null, null, null, null, null)
+                ? new RecordTaskLogsCommand(null, null, null, null, null, null)
                 : new RecordTaskLogsCommand(
+                        commandRes.getProviderRunId(),
                         commandRes.getDataProductFqn(),
                         commandRes.getDataProductVersionTag(),
                         commandRes.getActivityName(),
@@ -139,8 +140,9 @@ public class ActivityUseCasesService {
 
     public ActivityTaskCommandResultRes recordTaskResults(ActivityTaskResultsCommandRes commandRes) {
         RecordTaskResultsCommand command = commandRes == null
-                ? new RecordTaskResultsCommand(null, null, null, null, null, null)
+                ? new RecordTaskResultsCommand(null, null, null, null, null, null, null)
                 : new RecordTaskResultsCommand(
+                        commandRes.getProviderRunId(),
                         commandRes.getActivityUuid(),
                         commandRes.getDataProductFqn(),
                         commandRes.getDataProductVersionTag(),
@@ -155,8 +157,9 @@ public class ActivityUseCasesService {
 
     public ActivityTaskCommandResultRes recordTaskStatus(ActivityTaskStatusCommandRes commandRes) {
         RecordTaskStatusCommand command = commandRes == null
-                ? new RecordTaskStatusCommand(null, null, null, null, null)
+                ? new RecordTaskStatusCommand(null, null, null, null, null, null)
                 : new RecordTaskStatusCommand(
+                        commandRes.getProviderRunId(),
                         commandRes.getDataProductFqn(),
                         commandRes.getDataProductVersionTag(),
                         commandRes.getActivityName(),

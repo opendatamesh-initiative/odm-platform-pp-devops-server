@@ -3,8 +3,11 @@ package org.opendatamesh.platform.pp.devops.activity.repositories;
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity_;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
+import org.opendatamesh.platform.pp.devops.activity.entities.Task;
+import org.opendatamesh.platform.pp.devops.activity.entities.Task_;
 import org.opendatamesh.platform.pp.devops.utils.repositories.PagingAndSortingAndSpecificationExecutorRepository;
 import org.opendatamesh.platform.pp.devops.utils.repositories.SpecsUtils;
+import jakarta.persistence.criteria.Join;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -48,6 +51,21 @@ public interface ActivitiesRepository extends PagingAndSortingAndSpecificationEx
                 return null;
             }
             return (root, query, cb) -> root.get(Activity_.status).in(statuses);
+        }
+
+        /**
+         * Activities that have a RUNNING task with the given provider run id.
+         * Not a search filter: the caller guarantees a non-blank id, and the result is never null.
+         */
+        public static Specification<Activity> hasRunningTaskWithProviderRunId(String providerRunId) {
+            return (root, query, cb) -> {
+                query.distinct(true);
+                Join<Activity, Task> tasks = root.join(Activity_.tasks);
+                return cb.and(
+                        cb.equal(tasks.get(Task_.providerRunId), providerRunId),
+                        cb.equal(tasks.get(Task_.status), ExecutionStatus.RUNNING)
+                );
+            };
         }
     }
 }

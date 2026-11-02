@@ -11,5 +11,7 @@ interface RecordTaskStatusPersistenceOutboundPort {
 
     Activity findForUpdate(String uuid);
 
+    List<Activity> findActivitiesWithRunningTask(String providerRunId);
+
     Activity save(Activity activity);
 }

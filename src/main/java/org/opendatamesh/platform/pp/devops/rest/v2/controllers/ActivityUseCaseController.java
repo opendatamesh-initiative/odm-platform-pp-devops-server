@@ -111,14 +111,14 @@ public class ActivityUseCaseController {
 
     @Operation(
             summary = "Record logs of an instrumented task",
-            description = "Addresses the activity by data product, version tag, and activity name. "
+            description = "The task is addressed in one way only: by provider run id (task name optional, it narrows the match), or by data product, version tag, and activity name plus task name. "
                     + "Appends logs to an instrumented task. Logs are accepted only while the task is running."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Logs stored",
                     content = @Content(schema = @Schema(implementation = ActivityTaskCommandResultRes.class))),
-            @ApiResponse(responseCode = "400", description = "The logs cannot be stored"),
-            @ApiResponse(responseCode = "404", description = "Activity not found"),
+            @ApiResponse(responseCode = "400", description = "The logs cannot be stored, more than one RUNNING task has the provider run id, or the request mixes addresses"),
+            @ApiResponse(responseCode = "404", description = "No open activity, or no RUNNING task with the provider run id"),
             @ApiResponse(responseCode = "409", description = "The logs could not be stored because of a concurrent update"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
@@ -134,14 +134,15 @@ public class ActivityUseCaseController {
     @Operation(
             summary = "Record results of a task",
             description = "Appends results to a task of either mode. "
-                    + "The caller sends the activity uuid, or the data product, version tag, and activity name. "
+                    + "The task is addressed in one way only: by provider run id (task name optional, it narrows the match), "
+                    + "by activity uuid plus task name, or by data product, version tag, and activity name plus task name. "
                     + "Results are accepted only while the task is running."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Results stored",
                     content = @Content(schema = @Schema(implementation = ActivityTaskCommandResultRes.class))),
-            @ApiResponse(responseCode = "400", description = "The results cannot be stored"),
-            @ApiResponse(responseCode = "404", description = "Activity not found"),
+            @ApiResponse(responseCode = "400", description = "The results cannot be stored, more than one RUNNING task has the provider run id, or the request mixes addresses"),
+            @ApiResponse(responseCode = "404", description = "No open activity, or no RUNNING task with the provider run id"),
             @ApiResponse(responseCode = "409", description = "The results could not be stored because of a concurrent update"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
@@ -156,15 +157,15 @@ public class ActivityUseCaseController {
 
     @Operation(
             summary = "Record the terminal status of an instrumented task",
-            description = "Addresses the activity by data product, version tag, and activity name. "
+            description = "The task is addressed in one way only: by provider run id (task name optional, it narrows the match), or by data product, version tag, and activity name plus task name. "
                     + "Records the last status of an instrumented task. "
                     + "Status is the last write and is accepted only while the task is running."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Status recorded and the activity advanced",
                     content = @Content(schema = @Schema(implementation = ActivityTaskCommandResultRes.class))),
-            @ApiResponse(responseCode = "400", description = "The status cannot be recorded"),
-            @ApiResponse(responseCode = "404", description = "Activity not found"),
+            @ApiResponse(responseCode = "400", description = "The status cannot be recorded, more than one RUNNING task has the provider run id, or the request mixes addresses"),
+            @ApiResponse(responseCode = "404", description = "No open activity, or no RUNNING task with the provider run id"),
             @ApiResponse(responseCode = "409", description = "The status could not be recorded because of a concurrent update"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })

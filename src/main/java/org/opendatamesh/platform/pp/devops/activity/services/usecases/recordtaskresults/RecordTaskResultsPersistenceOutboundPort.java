@@ -9,5 +9,7 @@ interface RecordTaskResultsPersistenceOutboundPort {
 
     List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName);
 
+    List<Activity> findActivitiesWithRunningTask(String providerRunId);
+
     Activity save(Activity activity);
 }

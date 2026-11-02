@@ -17,7 +17,7 @@ import java.util.List;
 
 /**
  * Appends log rows to one running instrumented task.
- * The CLI addresses the activity by data product, version tag, and activity name.
+ * The caller sends the provider run id, or the data product, version tag, and activity name.
  */
 class RecordTaskLogs implements UseCase {
 
@@ -27,6 +27,7 @@ class RecordTaskLogs implements UseCase {
     private final RecordTaskLogsExecutorOutboundPort executorPort;
     private final TransactionalOutboundPort transactionalPort;
 
+    private String providerRunId;
     private String dataProductFqn;
     private String dataProductVersionTag;
     private String activityName;
@@ -49,16 +50,7 @@ class RecordTaskLogs implements UseCase {
     public void execute() {
         validateCommand();
         transactionalPort.doInTransaction(() -> {
-            List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionTag, activityName);
-            if (matches.isEmpty()) {
-                throw new NotFoundException("No PENDING or RUNNING activity " + activityName
-                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
-            }
-            if (matches.size() > 1) {
-                throw new BadRequestException("More than one open activity " + activityName
-                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
-            }
-            Activity activity = persistencePort.findForUpdate(matches.get(0).getUuid());
+            Activity activity = loadActivity();
             Task task = resolveTask(activity);
             requireInstrumented(task);
             requireRunning(task);
@@ -68,20 +60,13 @@ class RecordTaskLogs implements UseCase {
     }
 
     private void validateCommand() {
+        providerRunId = command == null ? null : trimToNull(command.providerRunId());
         dataProductFqn = command == null ? null : trimToNull(command.dataProductFqn());
         dataProductVersionTag = command == null ? null : trimToNull(command.dataProductVersionTag());
         activityName = command == null ? null : trimToNull(command.activityName());
         taskName = command == null ? null : trimToNull(command.taskName());
-        if (!StringUtils.hasText(dataProductFqn)) {
-            throw new BadRequestException("Data product FQN is required");
-        }
-        if (!StringUtils.hasText(dataProductVersionTag)) {
-            throw new BadRequestException("Data product version tag is required");
-        }
-        if (!StringUtils.hasText(activityName)) {
-            throw new BadRequestException("Activity name is required");
-        }
-        if (!StringUtils.hasText(taskName)) {
+        requireOneAddress();
+        if (!StringUtils.hasText(providerRunId) && !StringUtils.hasText(taskName)) {
             throw new BadRequestException("Task name is required");
         }
         logs = command.logs();
@@ -130,6 +115,26 @@ class RecordTaskLogs implements UseCase {
         }
     }
 
+    private Activity loadActivity() {
+        if (StringUtils.hasText(providerRunId)) {
+            return activityOfRunningTask();
+        }
+        return openActivityByNaturalKey();
+    }
+
+    private Activity openActivityByNaturalKey() {
+        List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionTag, activityName);
+        if (matches.isEmpty()) {
+            throw new NotFoundException("No PENDING or RUNNING activity " + activityName
+                    + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+        }
+        if (matches.size() > 1) {
+            throw new BadRequestException("More than one open activity " + activityName
+                    + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+        }
+        return persistencePort.findForUpdate(matches.get(0).getUuid());
+    }
+
     private Task resolveTask(Activity activity) {
         List<Task> matches = new ArrayList<>();
         if (activity.getTasks() != null) {
@@ -146,6 +151,86 @@ class RecordTaskLogs implements UseCase {
             throw new BadRequestException("Task " + taskName + " matches more than one task in activity " + activity.getUuid());
         }
         return matches.get(0);
+    }
+
+    private void requireOneAddress() {
+        boolean hasRunId = StringUtils.hasText(providerRunId);
+        boolean hasNaturalKey = StringUtils.hasText(dataProductFqn)
+                || StringUtils.hasText(dataProductVersionTag)
+                || StringUtils.hasText(activityName);
+        int addressKinds = (hasRunId ? 1 : 0) + (hasNaturalKey ? 1 : 0);
+        if (addressKinds == 0) {
+            throw new BadRequestException(
+                    "Provider run id or data product FQN, version tag, and activity name are required"
+            );
+        }
+        if (addressKinds > 1) {
+            throw new BadRequestException(
+                    "Send only one task address: provider run id, or data product FQN, version tag, and activity name"
+            );
+        }
+        if (hasRunId) {
+            return;
+        }
+        if (!StringUtils.hasText(dataProductFqn)) {
+            throw new BadRequestException("Data product FQN is required");
+        }
+        if (!StringUtils.hasText(dataProductVersionTag)) {
+            throw new BadRequestException("Data product version tag is required");
+        }
+        if (!StringUtils.hasText(activityName)) {
+            throw new BadRequestException("Activity name is required");
+        }
+    }
+
+    private Activity activityOfRunningTask() {
+        List<RunningTaskMatch> candidates = runningTasksWithRunId(persistencePort.findActivitiesWithRunningTask(providerRunId));
+        noRunningTask(candidates);
+        ambiguousRunId(candidates);
+        RunningTaskMatch match = candidates.get(0);
+        taskName = match.task().getName();
+        return match.activity();
+    }
+
+    private List<RunningTaskMatch> runningTasksWithRunId(List<Activity> activities) {
+        List<RunningTaskMatch> candidates = new ArrayList<>();
+        for (Activity activity : activities) {
+            if (activity.getTasks() == null) {
+                continue;
+            }
+            for (Task task : activity.getTasks()) {
+                boolean sameName = !StringUtils.hasText(taskName) || taskName.equals(task.getName());
+                if (task.getStatus() == ExecutionStatus.RUNNING && providerRunId.equals(task.getProviderRunId()) && sameName) {
+                    candidates.add(new RunningTaskMatch(activity, task));
+                }
+            }
+        }
+        return candidates;
+    }
+
+    private void noRunningTask(List<RunningTaskMatch> candidates) {
+        if (candidates.isEmpty()) {
+            throw new NotFoundException("No RUNNING task with provider run id " + providerRunId
+                    + (StringUtils.hasText(taskName) ? " and task name " + taskName : ""));
+        }
+    }
+
+    private void ambiguousRunId(List<RunningTaskMatch> candidates) {
+        if (candidates.size() > 1) {
+            StringBuilder matches = new StringBuilder();
+            for (RunningTaskMatch candidate : candidates) {
+                if (matches.length() > 0) {
+                    matches.append(", ");
+                }
+                matches.append("task ").append(candidate.task().getName())
+                        .append(" of activity ").append(candidate.activity().getUuid());
+            }
+            throw new BadRequestException("Provider run id " + providerRunId
+                    + " matches more than one RUNNING task: " + matches);
+        }
+    }
+
+    private record RunningTaskMatch(Activity activity, Task task) {
     }
 
     private static String trimToNull(String value) {

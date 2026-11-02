@@ -7,6 +7,7 @@ import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivitySe
 import org.opendatamesh.platform.pp.devops.utils.services.EntityInitAndDetachService;
 import org.springframework.data.domain.Pageable;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
@@ -41,6 +42,15 @@ class RecordTaskStatusPersistenceOutboundPortImpl implements RecordTaskStatusPer
         Activity activity = activityService.findOne(uuid);
         entityInitAndDetachService.refresh(activity);
         return activity;
+    }
+
+    @Override
+    public List<Activity> findActivitiesWithRunningTask(String providerRunId) {
+        List<Activity> loaded = new ArrayList<>();
+        for (Activity match : activityService.findActivitiesWithRunningTask(providerRunId)) {
+            loaded.add(findForUpdate(match.getUuid()));
+        }
+        return loaded;
     }
 
     @Override

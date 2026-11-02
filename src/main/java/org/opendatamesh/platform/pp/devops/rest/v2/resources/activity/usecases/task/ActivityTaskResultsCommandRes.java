@@ -8,25 +8,36 @@ import java.util.List;
 @Schema(name = "ActivityTaskResultsCommand", description = "Results to append to one running task")
 public class ActivityTaskResultsCommandRes {
 
-    @Schema(description = "UUID of the activity. When set, the data product, version tag, and activity name are ignored")
+    @Schema(description = "Provider run id of the RUNNING task to address. Use it instead of the other address fields. With it, taskName is optional and narrows the match.")
+    private String providerRunId;
+
+    @Schema(description = "Alternative address: UUID of the activity. Send only one address: provider run id, activity UUID, or data product, version tag, and activity name")
     private String activityUuid;
 
-    @Schema(description = "Fully qualified name of the data product, used when the activity UUID is absent")
+    @Schema(description = "Fully qualified name of the data product, alternative address, sent together with the version tag and activity name")
     private String dataProductFqn;
 
-    @Schema(description = "Version tag of the data product, used when the activity UUID is absent")
+    @Schema(description = "Alternative address: version tag of the data product, sent together with the FQN and activity name")
     private String dataProductVersionTag;
 
-    @Schema(description = "Name of the open activity, used when the activity UUID is absent")
+    @Schema(description = "Alternative address: name of the open activity, sent together with the FQN and version tag")
     private String activityName;
 
-    @Schema(description = "Name of the task on that activity")
+    @Schema(description = "Name of the task on that activity. Required with the data product address or the activity UUID, optional with the provider run id, where it narrows the match")
     private String taskName;
 
     @Schema(description = "Result rows to append. Each row carries content and an optional source time")
     private List<TaskResultRes> results;
 
     public ActivityTaskResultsCommandRes() {
+    }
+
+    public String getProviderRunId() {
+        return providerRunId;
+    }
+
+    public void setProviderRunId(String providerRunId) {
+        this.providerRunId = providerRunId;
     }
 
     public String getActivityUuid() {

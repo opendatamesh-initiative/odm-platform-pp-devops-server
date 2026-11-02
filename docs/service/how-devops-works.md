@@ -157,6 +157,8 @@ In both modes the activity follows the same lifecycle, is approved by the same p
    4. When the run has ended, DevOps collects its logs and records the outcome.
 4. DevOps moves on to the next task, or ends the activity.
 
+While a full-control task is running, its pipeline can upload results to DevOps. It tells DevOps which task it belongs to by the run id of the pipeline in the Git provider, for example the pipeline id on GitLab. In a child or downstream pipeline, the parent's id must be passed down.
+
 ```mermaid
 sequenceDiagram
   actor Owner as Data product owner
@@ -187,7 +189,7 @@ sequenceDiagram
 2. The ODM CLI, as a step of the pipeline, asks DevOps to execute the activity, and waits until the activity is approved.
 3. The CLI asks DevOps to run its task, and tells DevOps which pipeline run it is. It waits until the task is approved.
 4. The pipeline does its work. Meanwhile, the CLI sends DevOps the logs and the results.
-5. At the end, the CLI reports the final status: succeeded, failed, or canceled.
+5. At the end, the CLI reports the final status: succeeded, failed, or canceled. It identifies its task by the run id of the pipeline.
 6. DevOps moves on to the next task, or ends the activity.
 
 DevOps never contacts the pipeline tool for an instrumented task. It only records what the CLI reports.
@@ -235,6 +237,9 @@ For example, an activity can provision storage with a pipeline DevOps launches (
 - The ODM CLI refers to the execution by data product, version, and activity name, and to its task by task name. Task names must therefore be unique within an activity.
 - The CLI can only ask to run the next task in order, and only when no other task of the activity is running.
 - Logs and results are accepted only while the task is running. The final status must be the last report: after it, the task no longer accepts logs or results.
+- A running task can be addressed in one of three ways, never mixed: by the pipeline run id, by the data product, version, and activity name, or (for results only) by the activity. With the run id, the task name is optional and only narrows the match. Only a running task can be found by its run id.
+- If no running task has that run id, DevOps answers that it was not found. A full-control pipeline that uploads results right after it starts may reach DevOps before the run id is stored, so it should retry shortly. DevOps does not wait.
+- If more than one running task has the same run id, DevOps refuses the request and names the matches, instead of choosing one.
 - An instrumented task needs no executor address, no pipeline location, and no credentials, because DevOps does not call anything for it.
 
 ---
@@ -405,6 +410,7 @@ The owner can stop an activity that is still waiting or running. DevOps stops wh
 - **Restarting DevOps during a run.** A full-control task that was running stays `RUNNING`, because DevOps does not resume following it, and the credentials held in memory are lost. Automatic recovery after a restart is not supported yet.
 - **A silent instrumented pipeline.** If an instrumented pipeline never asks to run its task, or never reports a final status, the activity stays open. A cancel waits for that pipeline too.
 - **Credential lifetime.** Credentials expire after their lifetime (one hour by default), counted from the execution request. A task that starts later runs without them.
+- **Run ids are not unique.** Different pipeline tools can issue the same run id. DevOps only matches running tasks and refuses an id shared by several of them. A clash in the short time before a full-control task has its run id stored is accepted; sending the task name narrows the match.
 - **One instance.** Credentials and in-progress runs are held in the memory of one DevOps instance. Run a single instance.
 
 ---

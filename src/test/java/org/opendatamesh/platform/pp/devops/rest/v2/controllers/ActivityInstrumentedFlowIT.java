@@ -781,6 +781,223 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
         assertCliExecutorNotOpened();
     }
 
+    /**
+     * Feature: Address a running task by provider run id
+     *
+     * Scenario: Instrumented task closed by its run id
+     *   Given an instrumented task is RUNNING with provider run id "gh-123"
+     *   When the CLI records logs, results and status SUCCEEDED with only the provider run id
+     *   Then each response is 200
+     *   And the task is SUCCEEDED with the log and result stored
+     *   And the activity is advanced
+     */
+    @Test
+    public void whenReportsByProviderRunIdThenTerminalStatusClosesTheActivity() {
+        // Given
+        ActivityRes running = runningTask("dpv-runid-close", "deploy", "gh-123");
+
+        // When
+        ResponseEntity<ActivityTaskCommandResultRes> logs = postLogsByRunId("gh-123", null, "a log line");
+        ResponseEntity<ActivityTaskCommandResultRes> results = postResultsByRunId("gh-123", null, "a result");
+        ResponseEntity<ActivityTaskCommandResultRes> status = postStatusByRunId("gh-123", null, ExecutionStatus.SUCCEEDED);
+
+        // Then
+        assertThat(logs.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(results.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(status.getStatusCode()).isEqualTo(HttpStatus.OK);
+        ActivityRes stored = getActivity(running.getUuid());
+        TaskRes task = taskByName(stored, "deploy");
+        assertThat(task.getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
+        assertThat(task.getLogs()).extracting(TaskLogRes::getContent).containsExactly("a log line");
+        assertThat(task.getResults()).extracting(TaskResultRes::getContent).containsExactly("a result");
+        assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.SUCCEEDED);
+        assertCliExecutorNotOpened();
+    }
+
+    /**
+     * Feature: Address a running task by provider run id
+     *
+     * Scenario: Full-control results uploaded by the pipeline's run id
+     *   Given a full-control task is RUNNING and its provider run id "gl-42" is stored
+     *   When the pipeline records results with only the provider run id
+     *   Then the response is 200 and the result is stored on that task
+     */
+    @Test
+    @Timeout(value = 40, unit = TimeUnit.SECONDS)
+    public void whenFullControlTaskRunningThenResultsByProviderRunIdStored() throws Exception {
+        // Given
+        CountDownLatch statusEntered = new CountDownLatch(1);
+        CountDownLatch releaseStatus = new CountDownLatch(1);
+        executor().startRunId("gl-42").holdStatus(statusEntered, releaseStatus);
+        ActivityRes created = executeTasks("dpv-fc-runid-results", List.of(starterTask("deploy")));
+        postActivityApproved(created.getUuid());
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread approval = new Thread(() -> {
+            try {
+                postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
+            } catch (Throwable thrown) {
+                failure.set(thrown);
+            }
+        }, "full-control-approval");
+        approval.setDaemon(true);
+        approval.start();
+        try {
+            assertThat(statusEntered.await(20, TimeUnit.SECONDS)).isTrue();
+            TaskRes held = taskByName(getActivity(created.getUuid()), "deploy");
+            assertThat(held.getStatus()).isEqualTo(ExecutionStatus.RUNNING);
+            assertThat(held.getProviderRunId()).isEqualTo("gl-42");
+
+            // When
+            ResponseEntity<ActivityTaskCommandResultRes> recorded = postResultsByRunId("gl-42", null, "pipeline-result");
+
+            // Then
+            assertThat(recorded.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(taskByName(getActivity(created.getUuid()), "deploy").getResults())
+                    .extracting(TaskResultRes::getContent).contains("pipeline-result");
+        } finally {
+            releaseStatus.countDown();
+            approval.join(20_000);
+        }
+        assertThat(failure.get()).isNull();
+        assertCliExecutorNotOpened();
+    }
+
+    /**
+     * Feature: Address a running task by provider run id
+     *
+     * Scenario: No running task with the run id
+     *   Given no task is RUNNING with provider run id "unknown"
+     *   When the CLI records results with that provider run id
+     *   Then the response is 404 "No RUNNING task with provider run id unknown"
+     */
+    @Test
+    public void whenNoRunningTaskWithProviderRunIdThenNotFound() {
+        // Given
+        runningTask("dpv-runid-unknown", "deploy", "gh-123");
+
+        // When
+        ResponseEntity<ErrorRes> response = postResultsByRunIdError("unknown", null, "a result");
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody().getMessage()).isEqualTo("No RUNNING task with provider run id unknown");
+    }
+
+    /**
+     * Feature: Address a running task by provider run id
+     *
+     * Scenario: Run id of a finished task is not matched
+     *   Given a task of an earlier activity is SUCCEEDED with provider run id "gh-123"
+     *   And a task of a new activity is RUNNING with provider run id "gh-123"
+     *   When the CLI records results with that provider run id
+     *   Then the result is stored on the RUNNING task only
+     */
+    @Test
+    public void whenEarlierTaskTerminalWithSameRunIdThenRunningTaskMatched() {
+        // Given
+        ActivityRes earlier = runningTask("dpv-runid-earlier", "deploy", "gh-123");
+        assertThat(postStatus(earlier, "deploy", ExecutionStatus.SUCCEEDED).getStatusCode()).isEqualTo(HttpStatus.OK);
+        ActivityRes current = runningTask("dpv-runid-current", "deploy", "gh-123");
+
+        // When
+        ResponseEntity<ActivityTaskCommandResultRes> response = postResultsByRunId("gh-123", null, "current-result");
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(taskByName(getActivity(current.getUuid()), "deploy").getResults())
+                .extracting(TaskResultRes::getContent).containsExactly("current-result");
+        assertThat(taskByName(getActivity(earlier.getUuid()), "deploy").getResults()).isEmpty();
+    }
+
+    /**
+     * Feature: Address a running task by provider run id
+     *
+     * Scenario: Run id of a finished task is not matched
+     *   Given a task of an earlier activity is SUCCEEDED with provider run id "gh-123"
+     *   And a task of a new activity is RUNNING with provider run id "gh-123"
+     *   When the CLI records results with that provider run id
+     *   Then the result is stored on the RUNNING task only
+     *
+     * Same activity: "build" is SUCCEEDED and "deploy" is RUNNING, both with run id "gh-123".
+     */
+    @Test
+    public void whenSameActivityHasFinishedAndRunningTaskWithRunIdThenOnlyRunningTaskMatched() {
+        // Given
+        ActivityRes created = executeTasks("dpv-runid-same-activity", List.of(cliTask("build"), cliTask("deploy")));
+        postActivityApproved(created.getUuid());
+        requestExecution(created, "build", "gh-123");
+        postTaskApproved(created.getUuid(), taskByName(created, "build").getUuid());
+        assertThat(postStatus(created, "build", ExecutionStatus.SUCCEEDED).getStatusCode()).isEqualTo(HttpStatus.OK);
+        requestExecution(created, "deploy", "gh-123");
+        postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
+
+        // When
+        ResponseEntity<ActivityTaskCommandResultRes> response = postResultsByRunId("gh-123", null, "deploy-result");
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        ActivityRes stored = getActivity(created.getUuid());
+        assertThat(taskByName(stored, "deploy").getResults()).extracting(TaskResultRes::getContent).containsExactly("deploy-result");
+        assertThat(taskByName(stored, "build").getResults()).isEmpty();
+    }
+
+    /**
+     * Feature: Address a running task by provider run id
+     *
+     * Scenario: Run id shared by two running tasks is refused
+     *   Given two activities each have a RUNNING task with provider run id "gh-123"
+     *   When the CLI records the status with that provider run id
+     *   Then the response is 400 naming both tasks and activities
+     *   And no task changes
+     */
+    @Test
+    public void whenProviderRunIdMatchesTwoRunningTasksThenBadRequest() {
+        // Given
+        ActivityRes first = runningTask("dpv-runid-shared-1", "deploy", "gh-123");
+        ActivityRes second = runningTask("dpv-runid-shared-2", "deploy", "gh-123");
+
+        // When
+        ResponseEntity<ErrorRes> response = postStatusByRunIdError("gh-123", null, ExecutionStatus.SUCCEEDED);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().getMessage())
+                .startsWith("Provider run id gh-123 matches more than one RUNNING task: ")
+                .contains("task deploy of activity " + first.getUuid())
+                .contains("task deploy of activity " + second.getUuid());
+        assertThat(taskByName(getActivity(first.getUuid()), "deploy").getStatus()).isEqualTo(ExecutionStatus.RUNNING);
+        assertThat(taskByName(getActivity(second.getUuid()), "deploy").getStatus()).isEqualTo(ExecutionStatus.RUNNING);
+    }
+
+    /**
+     * Feature: Address a running task by provider run id
+     *
+     * Scenario: Mixed addresses are refused
+     *   When the CLI records results with a provider run id and an activity uuid
+     *   Then the response is 400 asking for only one task address
+     */
+    @Test
+    public void whenRunIdMixedWithActivityUuidThenBadRequest() {
+        // Given
+        ActivityRes running = runningTask("dpv-runid-mixed", "deploy", "gh-123");
+        ActivityTaskResultsCommandRes command = resultsCommand(null, "deploy", "a result");
+        command.setProviderRunId("gh-123");
+        command.setActivityUuid(running.getUuid());
+
+        // When
+        ResponseEntity<ErrorRes> response = rest.postForEntity(
+                apiUrl(RoutesV2.ACTIVITIES_TASKS_RESULTS),
+                new HttpEntity<>(command, jsonHeaders()),
+                ErrorRes.class
+        );
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().getMessage()).isEqualTo(
+                "Send only one task address: provider run id, activity UUID, or data product FQN, version tag, and activity name");
+        assertThat(taskByName(getActivity(running.getUuid()), "deploy").getResults()).isEmpty();
+    }
+
     private ActivityRes runningTask(String dataProductVersionUuid, String taskName, String providerRunId) {
         ActivityRes created = runningActivity(dataProductVersionUuid, taskName);
         requestExecution(created, taskName, providerRunId);
@@ -892,6 +1109,46 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
         return rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES_TASKS_STATUS),
                 new HttpEntity<>(statusCommand(activity, taskName, status), jsonHeaders()),
+                ErrorRes.class
+        );
+    }
+
+    private ResponseEntity<ActivityTaskCommandResultRes> postLogsByRunId(String providerRunId, String taskName, String content) {
+        return rest.postForEntity(
+                apiUrl(RoutesV2.ACTIVITIES_TASKS_LOGS),
+                new HttpEntity<>(logsByRunIdCommand(providerRunId, taskName, content), jsonHeaders()),
+                ActivityTaskCommandResultRes.class
+        );
+    }
+
+    private ResponseEntity<ActivityTaskCommandResultRes> postResultsByRunId(String providerRunId, String taskName, String content) {
+        return rest.postForEntity(
+                apiUrl(RoutesV2.ACTIVITIES_TASKS_RESULTS),
+                new HttpEntity<>(resultsByRunIdCommand(providerRunId, taskName, content), jsonHeaders()),
+                ActivityTaskCommandResultRes.class
+        );
+    }
+
+    private ResponseEntity<ErrorRes> postResultsByRunIdError(String providerRunId, String taskName, String content) {
+        return rest.postForEntity(
+                apiUrl(RoutesV2.ACTIVITIES_TASKS_RESULTS),
+                new HttpEntity<>(resultsByRunIdCommand(providerRunId, taskName, content), jsonHeaders()),
+                ErrorRes.class
+        );
+    }
+
+    private ResponseEntity<ActivityTaskCommandResultRes> postStatusByRunId(String providerRunId, String taskName, ExecutionStatus status) {
+        return rest.postForEntity(
+                apiUrl(RoutesV2.ACTIVITIES_TASKS_STATUS),
+                new HttpEntity<>(statusByRunIdCommand(providerRunId, taskName, status), jsonHeaders()),
+                ActivityTaskCommandResultRes.class
+        );
+    }
+
+    private ResponseEntity<ErrorRes> postStatusByRunIdError(String providerRunId, String taskName, ExecutionStatus status) {
+        return rest.postForEntity(
+                apiUrl(RoutesV2.ACTIVITIES_TASKS_STATUS),
+                new HttpEntity<>(statusByRunIdCommand(providerRunId, taskName, status), jsonHeaders()),
                 ErrorRes.class
         );
     }
@@ -1036,6 +1293,24 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
         command.setActivityName(activity.getName());
         command.setTaskName(taskName);
         command.setStatus(status);
+        return command;
+    }
+
+    private static ActivityTaskLogsCommandRes logsByRunIdCommand(String providerRunId, String taskName, String content) {
+        ActivityTaskLogsCommandRes command = logsCommand(new ActivityRes(), taskName, content);
+        command.setProviderRunId(providerRunId);
+        return command;
+    }
+
+    private static ActivityTaskResultsCommandRes resultsByRunIdCommand(String providerRunId, String taskName, String content) {
+        ActivityTaskResultsCommandRes command = resultsCommand(null, taskName, content);
+        command.setProviderRunId(providerRunId);
+        return command;
+    }
+
+    private static ActivityTaskStatusCommandRes statusByRunIdCommand(String providerRunId, String taskName, ExecutionStatus status) {
+        ActivityTaskStatusCommandRes command = statusCommand(new ActivityRes(), taskName, status);
+        command.setProviderRunId(providerRunId);
         return command;
     }
 

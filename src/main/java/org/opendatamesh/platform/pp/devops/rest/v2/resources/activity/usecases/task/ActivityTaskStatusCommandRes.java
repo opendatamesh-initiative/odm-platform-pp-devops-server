@@ -6,22 +6,33 @@ import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 @Schema(name = "ActivityTaskStatusCommand", description = "Terminal status of one running instrumented task")
 public class ActivityTaskStatusCommandRes {
 
-    @Schema(description = "Fully qualified name of the data product")
+    @Schema(description = "Provider run id of the RUNNING task to address. Use it instead of the other address fields. With it, taskName is optional and narrows the match.")
+    private String providerRunId;
+
+    @Schema(description = "Alternative address: fully qualified name of the data product, sent together with the version tag and activity name")
     private String dataProductFqn;
 
-    @Schema(description = "Version tag of the data product")
+    @Schema(description = "Alternative address: version tag of the data product, sent together with the FQN and activity name")
     private String dataProductVersionTag;
 
-    @Schema(description = "Name of the open activity")
+    @Schema(description = "Alternative address: name of the open activity, sent together with the FQN and version tag")
     private String activityName;
 
-    @Schema(description = "Name of the task on that activity")
+    @Schema(description = "Name of the task on that activity. Required with the data product address, optional with the provider run id, where it narrows the match")
     private String taskName;
 
     @Schema(description = "Terminal status: SUCCEEDED, FAILED, or CANCELED")
     private ExecutionStatus status;
 
     public ActivityTaskStatusCommandRes() {
+    }
+
+    public String getProviderRunId() {
+        return providerRunId;
+    }
+
+    public void setProviderRunId(String providerRunId) {
+        this.providerRunId = providerRunId;
     }
 
     public String getDataProductFqn() {

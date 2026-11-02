@@ -72,6 +72,14 @@ public class ActivityServiceImpl
     }
 
     @Override
+    public List<Activity> findActivitiesWithRunningTask(String providerRunId) {
+        if (!StringUtils.hasText(providerRunId)) {
+            return List.of();
+        }
+        return getRepository().findAll(ActivitiesRepository.Specs.hasRunningTaskWithProviderRunId(providerRunId));
+    }
+
+    @Override
     protected Specification<Activity> getSpecFromFilters(ActivitySearchOptions filters) {
         List<Specification<Activity>> specs = new ArrayList<>();
         if (filters != null) {
