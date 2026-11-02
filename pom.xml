@@ -42,6 +42,8 @@
         <org.flyway.version>11.11.2</org.flyway.version>
         <org.postgresql.version>42.7.3</org.postgresql.version>
         <org.hibernate.jpamodelgen.version>6.4.1.Final</org.hibernate.jpamodelgen.version>
+        <!-- 1.21.4+ negotiates the Docker API version (Docker 29 rejects the old hardcoded 1.32) -->
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
 	<dependencies>
@@ -94,13 +96,11 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers</artifactId>
-            <version>1.19.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
-            <version>1.19.3</version>
             <scope>test</scope>
         </dependency>
 
