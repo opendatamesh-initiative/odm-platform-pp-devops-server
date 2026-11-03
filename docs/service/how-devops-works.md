@@ -241,6 +241,7 @@ For example, an activity can provision storage with a pipeline DevOps launches (
 - If no running task has that run id, DevOps answers that it was not found. A full-control pipeline that uploads results right after it starts may reach DevOps before the run id is stored, so it should retry shortly. DevOps does not wait.
 - If more than one running task has the same run id, DevOps refuses the request and names the matches, instead of choosing one.
 - An instrumented task needs no executor address, no pipeline location, and no credentials, because DevOps does not call anything for it.
+- Every task that DevOps returns or publishes carries `executionMode` (`FULL_CONTROL` or `INSTRUMENTED`), taken from the declaration of its executor when the task is read or the message is built. It is read-only, and it is `null` when the executor is no longer declared. This is how a client tells an instrumented task waiting for its pipeline from a full-control task waiting for approval.
 
 ---
 
