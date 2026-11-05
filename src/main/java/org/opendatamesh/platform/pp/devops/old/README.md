@@ -36,7 +36,7 @@ Properties: `odm.product-plane.policy-service.active`, `.version`, `.address`.
 | `ACTIVITY_TASK_EXECUTION_REQUESTED` | `TASK_EXECUTION_RESULT` | `{ activity, task }` (DD-10) | `ACTIVITY_TASK_EXECUTION_APPROVED` / `ACTIVITY_TASK_EXECUTION_REJECTED` |
 
 - `currentState` is omitted.
-- `dataProductId` is `UUID.nameUUIDFromBytes(fqn UTF-8)`, the same value the DPDS parser 1.x computes (DD-7). `dataProductVersion` is the version tag.
+- `dataProductId` is `UUID.nameUUIDFromBytes(fqn UTF-8)`, the same value the DPDS parser 1.x computes (DD-7). `dataProductVersion` is the activity's `dataProductVersionNumber` (the descriptor's `info.version`).
 - Only a failed policy with `blockingFlag=true` rejects. Empty results and non-blocking failures approve. A `ClientException` (Policy unreachable or HTTP error) rejects (DD-6).
 - A missing activity, or a missing data product version uuid or fqn, is a defect. The notification fails, no decision is emitted, and the work stays `PENDING` (DD-6, DD-10).
 - Not sent: `ACTIVITY_STAGE_TRANSITION`, activity succeeded/failed/canceled, and V1 notification broadcasts.
@@ -53,7 +53,7 @@ The `afterState` document is built by `PolicyV1InputEnricher` from the V2 event 
     "uuid": "...",
     "dataProductVersionUuid": "...",
     "dataProductFqn": "urn:org.opendatamesh:dataproducts:sample-product",
-    "dataProductVersionTag": "1.0.0",
+    "dataProductVersionNumber": "1.0.0",
     "name": "prod",
     "sortOrder": 2,
     "status": "PENDING",

@@ -134,11 +134,11 @@ class RecordTaskStatusTest {
         assertThatThrownBy(() -> run(command(null, null, null, null, "deploy", ExecutionStatus.SUCCEEDED),
                 persistence, new ArrayList<>(), new ArrayList<>()))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("Provider run id or data product FQN, version tag, and activity name are required");
+                .hasMessage("Provider run id or data product FQN, version number, and activity name are required");
         assertThatThrownBy(() -> run(command("gh-123", "dp-1", "1.0.0", "prod", "deploy", ExecutionStatus.SUCCEEDED),
                 persistence, new ArrayList<>(), new ArrayList<>()))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("Send only one task address: provider run id, or data product FQN, version tag, and activity name");
+                .hasMessage("Send only one task address: provider run id, or data product FQN, version number, and activity name");
     }
 
     /**
@@ -169,7 +169,7 @@ class RecordTaskStatusTest {
      *
      * Scenario: Existing natural-key address still works
      *   Given an instrumented task is RUNNING
-     *   When the CLI records the status with the data product, version tag, activity and task name
+     *   When the CLI records the status with the data product, version number, activity and task name
      *   Then the response is 200 as before
      */
     @Test
@@ -194,16 +194,16 @@ class RecordTaskStatusTest {
                 executorName -> ExecutionMode.INSTRUMENTED, advanced::add, new DirectTransactions()).execute();
     }
 
-    private static RecordTaskStatusCommand command(String providerRunId, String fqn, String versionTag,
+    private static RecordTaskStatusCommand command(String providerRunId, String fqn, String versionNumber,
                                                    String activityName, String taskName, ExecutionStatus status) {
-        return new RecordTaskStatusCommand(providerRunId, fqn, versionTag, activityName, taskName, status);
+        return new RecordTaskStatusCommand(providerRunId, fqn, versionNumber, activityName, taskName, status);
     }
 
     private static Activity activity(String uuid, String fqn, Task... tasks) {
         Activity activity = new Activity();
         activity.setUuid(uuid);
         activity.setDataProductFqn(fqn);
-        activity.setDataProductVersionTag("1.0.0");
+        activity.setDataProductVersionNumber("1.0.0");
         activity.setName("prod");
         activity.setStatus(ExecutionStatus.RUNNING);
         activity.setTasks(new ArrayList<>(List.of(tasks)));
@@ -244,16 +244,16 @@ class RecordTaskStatusTest {
         }
 
         @Override
-        public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName) {
+        public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionNumber, String activityName) {
             return stored.stream()
                     .filter(activity -> dataProductFqn.equals(activity.getDataProductFqn())
-                            && dataProductVersionTag.equals(activity.getDataProductVersionTag())
+                            && dataProductVersionNumber.equals(activity.getDataProductVersionNumber())
                             && activityName.equals(activity.getName()))
                     .toList();
         }
 
         @Override
-        public List<Activity> findActivitiesWithRunningTask(String providerRunId) {
+        public List<Activity> findActivitiesByTaskProviderRunId(String providerRunId) {
             return stored.stream()
                     .filter(activity -> activity.getTasks().stream().anyMatch(task ->
                             task.getStatus() == ExecutionStatus.RUNNING && providerRunId.equals(task.getProviderRunId())))

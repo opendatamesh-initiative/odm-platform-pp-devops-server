@@ -16,7 +16,7 @@ import java.util.List;
 
 /**
  * Records the last status of a running instrumented task, then calls Advance Activity.
- * The caller sends the provider run id, or the data product, version tag, and activity name.
+ * The caller sends the provider run id, or the data product, version number, and activity name.
  */
 class RecordTaskStatus implements UseCase {
 
@@ -29,7 +29,7 @@ class RecordTaskStatus implements UseCase {
 
     private String providerRunId;
     private String dataProductFqn;
-    private String dataProductVersionTag;
+    private String dataProductVersionNumber;
     private String activityName;
     private String taskName;
     private ExecutionStatus status;
@@ -60,7 +60,7 @@ class RecordTaskStatus implements UseCase {
     private void validateCommand() {
         providerRunId = command == null ? null : trimToNull(command.providerRunId());
         dataProductFqn = command == null ? null : trimToNull(command.dataProductFqn());
-        dataProductVersionTag = command == null ? null : trimToNull(command.dataProductVersionTag());
+        dataProductVersionNumber = command == null ? null : trimToNull(command.dataProductVersionNumber());
         activityName = command == null ? null : trimToNull(command.activityName());
         taskName = command == null ? null : trimToNull(command.taskName());
         status = command == null ? null : command.status();
@@ -111,14 +111,14 @@ class RecordTaskStatus implements UseCase {
     }
 
     private Activity openActivityByNaturalKey() {
-        List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionTag, activityName);
+        List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionNumber, activityName);
         if (matches.isEmpty()) {
             throw new NotFoundException("No PENDING or RUNNING activity " + activityName
-                    + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+                    + " for data product " + dataProductFqn + " version " + dataProductVersionNumber);
         }
         if (matches.size() > 1) {
             throw new BadRequestException("More than one open activity " + activityName
-                    + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+                    + " for data product " + dataProductFqn + " version " + dataProductVersionNumber);
         }
         return persistencePort.findForUpdate(matches.get(0).getUuid());
     }
@@ -144,17 +144,17 @@ class RecordTaskStatus implements UseCase {
     private void requireOneAddress() {
         boolean hasRunId = StringUtils.hasText(providerRunId);
         boolean hasNaturalKey = StringUtils.hasText(dataProductFqn)
-                || StringUtils.hasText(dataProductVersionTag)
+                || StringUtils.hasText(dataProductVersionNumber)
                 || StringUtils.hasText(activityName);
         int addressKinds = (hasRunId ? 1 : 0) + (hasNaturalKey ? 1 : 0);
         if (addressKinds == 0) {
             throw new BadRequestException(
-                    "Provider run id or data product FQN, version tag, and activity name are required"
+                    "Provider run id or data product FQN, version number, and activity name are required"
             );
         }
         if (addressKinds > 1) {
             throw new BadRequestException(
-                    "Send only one task address: provider run id, or data product FQN, version tag, and activity name"
+                    "Send only one task address: provider run id, or data product FQN, version number, and activity name"
             );
         }
         if (hasRunId) {
@@ -163,8 +163,8 @@ class RecordTaskStatus implements UseCase {
         if (!StringUtils.hasText(dataProductFqn)) {
             throw new BadRequestException("Data product FQN is required");
         }
-        if (!StringUtils.hasText(dataProductVersionTag)) {
-            throw new BadRequestException("Data product version tag is required");
+        if (!StringUtils.hasText(dataProductVersionNumber)) {
+            throw new BadRequestException("Data product version number is required");
         }
         if (!StringUtils.hasText(activityName)) {
             throw new BadRequestException("Activity name is required");
@@ -172,7 +172,7 @@ class RecordTaskStatus implements UseCase {
     }
 
     private Activity activityOfRunningTask() {
-        List<RunningTaskMatch> candidates = runningTasksWithRunId(persistencePort.findActivitiesWithRunningTask(providerRunId));
+        List<RunningTaskMatch> candidates = runningTasksWithRunId(persistencePort.findActivitiesByTaskProviderRunId(providerRunId));
         noRunningTask(candidates);
         ambiguousRunId(candidates);
         RunningTaskMatch match = candidates.get(0);

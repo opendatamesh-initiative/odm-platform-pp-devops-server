@@ -112,7 +112,7 @@ public class ActivityUseCasesService {
                 ? new RequestTaskExecutionCommand(null, null, null, null, null)
                 : new RequestTaskExecutionCommand(
                         commandRes.getDataProductFqn(),
-                        commandRes.getDataProductVersionTag(),
+                        commandRes.getDataProductVersionNumber(),
                         commandRes.getActivityName(),
                         commandRes.getTaskName(),
                         commandRes.getProviderRunId()
@@ -128,7 +128,7 @@ public class ActivityUseCasesService {
                 : new RecordTaskLogsCommand(
                         commandRes.getProviderRunId(),
                         commandRes.getDataProductFqn(),
-                        commandRes.getDataProductVersionTag(),
+                        commandRes.getDataProductVersionNumber(),
                         commandRes.getActivityName(),
                         commandRes.getTaskName(),
                         toLogs(commandRes.getLogs())
@@ -145,7 +145,7 @@ public class ActivityUseCasesService {
                         commandRes.getProviderRunId(),
                         commandRes.getActivityUuid(),
                         commandRes.getDataProductFqn(),
-                        commandRes.getDataProductVersionTag(),
+                        commandRes.getDataProductVersionNumber(),
                         commandRes.getActivityName(),
                         commandRes.getTaskName(),
                         toResults(commandRes.getResults())
@@ -161,7 +161,7 @@ public class ActivityUseCasesService {
                 : new RecordTaskStatusCommand(
                         commandRes.getProviderRunId(),
                         commandRes.getDataProductFqn(),
-                        commandRes.getDataProductVersionTag(),
+                        commandRes.getDataProductVersionNumber(),
                         commandRes.getActivityName(),
                         commandRes.getTaskName(),
                         commandRes.getStatus()

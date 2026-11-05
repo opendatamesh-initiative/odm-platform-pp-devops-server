@@ -4,7 +4,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 
 public record RecordTaskStatusCommand(String providerRunId,
                                       String dataProductFqn,
-                                      String dataProductVersionTag,
+                                      String dataProductVersionNumber,
                                       String activityName,
                                       String taskName,
                                       ExecutionStatus status) {

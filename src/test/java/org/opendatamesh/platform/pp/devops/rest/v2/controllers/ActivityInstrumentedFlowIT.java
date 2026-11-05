@@ -1,5 +1,6 @@
 package org.opendatamesh.platform.pp.devops.rest.v2.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -972,6 +973,34 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
     /**
      * Feature: Address a running task by provider run id
      *
+     * Scenario: Search filters activities by task provider run id
+     *   Given an activity has a RUNNING task with provider run id "gh-search-1"
+     *   And another activity has a RUNNING task with provider run id "gh-search-2"
+     *   When the client GETs /activities?taskProviderRunId=gh-search-1
+     *   Then the page contains only the first activity
+     */
+    @Test
+    public void whenSearchByTaskProviderRunIdThenOnlyMatchingActivity() {
+        // Given
+        ActivityRes first = runningTask("dpv-runid-search-1", "deploy", "gh-search-1");
+        runningTask("dpv-runid-search-2", "deploy", "gh-search-2");
+
+        // When
+        ResponseEntity<JsonNode> response = rest.getForEntity(
+                apiUrl(RoutesV2.ACTIVITIES, "?taskProviderRunId=gh-search-1"),
+                JsonNode.class
+        );
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode content = response.getBody().get("content");
+        assertThat(content).hasSize(1);
+        assertThat(content.get(0).get("uuid").asText()).isEqualTo(first.getUuid());
+    }
+
+    /**
+     * Feature: Address a running task by provider run id
+     *
      * Scenario: Mixed addresses are refused
      *   When the CLI records results with a provider run id and an activity uuid
      *   Then the response is 400 asking for only one task address
@@ -994,7 +1023,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().getMessage()).isEqualTo(
-                "Send only one task address: provider run id, activity UUID, or data product FQN, version tag, and activity name");
+                "Send only one task address: provider run id, activity UUID, or data product FQN, version number, and activity name");
         assertThat(taskByName(getActivity(running.getUuid()), "deploy").getResults()).isEmpty();
     }
 
@@ -1024,7 +1053,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
         ActivityRes activity = new ActivityRes();
         activity.setDataProductVersionUuid(dataProductVersionUuid);
         activity.setDataProductFqn(dataProductVersionUuid);
-        activity.setDataProductVersionTag("1.0.0");
+        activity.setDataProductVersionNumber("1.0.0");
         activity.setName("prod");
         activity.setSortOrder(1);
         activity.setTasks(tasks);
@@ -1253,7 +1282,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
     private static ActivityTaskExecutionRequestCommandRes requestCommand(ActivityRes activity, String taskName, String providerRunId) {
         ActivityTaskExecutionRequestCommandRes command = new ActivityTaskExecutionRequestCommandRes();
         command.setDataProductFqn(activity.getDataProductFqn());
-        command.setDataProductVersionTag(activity.getDataProductVersionTag());
+        command.setDataProductVersionNumber(activity.getDataProductVersionNumber());
         command.setActivityName(activity.getName());
         command.setTaskName(taskName);
         command.setProviderRunId(providerRunId);
@@ -1265,7 +1294,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
         log.setContent(content);
         ActivityTaskLogsCommandRes command = new ActivityTaskLogsCommandRes();
         command.setDataProductFqn(activity.getDataProductFqn());
-        command.setDataProductVersionTag(activity.getDataProductVersionTag());
+        command.setDataProductVersionNumber(activity.getDataProductVersionNumber());
         command.setActivityName(activity.getName());
         command.setTaskName(taskName);
         command.setLogs(List.of(log));
@@ -1278,7 +1307,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
         ActivityTaskResultsCommandRes command = new ActivityTaskResultsCommandRes();
         if (activity != null) {
             command.setDataProductFqn(activity.getDataProductFqn());
-            command.setDataProductVersionTag(activity.getDataProductVersionTag());
+            command.setDataProductVersionNumber(activity.getDataProductVersionNumber());
             command.setActivityName(activity.getName());
         }
         command.setTaskName(taskName);
@@ -1289,7 +1318,7 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
     private static ActivityTaskStatusCommandRes statusCommand(ActivityRes activity, String taskName, ExecutionStatus status) {
         ActivityTaskStatusCommandRes command = new ActivityTaskStatusCommandRes();
         command.setDataProductFqn(activity.getDataProductFqn());
-        command.setDataProductVersionTag(activity.getDataProductVersionTag());
+        command.setDataProductVersionNumber(activity.getDataProductVersionNumber());
         command.setActivityName(activity.getName());
         command.setTaskName(taskName);
         command.setStatus(status);

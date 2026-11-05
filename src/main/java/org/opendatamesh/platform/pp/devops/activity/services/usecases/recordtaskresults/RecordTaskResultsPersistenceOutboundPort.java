@@ -7,9 +7,13 @@ import java.util.List;
 interface RecordTaskResultsPersistenceOutboundPort {
     Activity findForUpdate(String uuid);
 
-    List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName);
+    List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionNumber, String activityName);
 
-    List<Activity> findActivitiesWithRunningTask(String providerRunId);
+    /**
+     * Returns the RUNNING activities that have a task with the given provider run id, each loaded for update.
+     * The caller passes a non-blank id: a blank one would not filter by run id.
+     */
+    List<Activity> findActivitiesByTaskProviderRunId(String providerRunId);
 
     Activity save(Activity activity);
 }

@@ -134,10 +134,10 @@ class RecordTaskLogsTest {
 
         assertThatThrownBy(() -> run(command("gh-123", "dp-1", "1.0.0", "prod", "deploy"), persistence, new ArrayList<>()))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("Send only one task address: provider run id, or data product FQN, version tag, and activity name");
+                .hasMessage("Send only one task address: provider run id, or data product FQN, version number, and activity name");
         assertThatThrownBy(() -> run(command(null, null, null, null, "deploy"), persistence, new ArrayList<>()))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("Provider run id or data product FQN, version tag, and activity name are required");
+                .hasMessage("Provider run id or data product FQN, version number, and activity name are required");
     }
 
     private static void run(RecordTaskLogsCommand command, FakePersistence persistence, List<Activity> presented) {
@@ -146,11 +146,11 @@ class RecordTaskLogsTest {
                 new DirectTransactions()).execute();
     }
 
-    private static RecordTaskLogsCommand command(String providerRunId, String fqn, String versionTag,
+    private static RecordTaskLogsCommand command(String providerRunId, String fqn, String versionNumber,
                                                  String activityName, String taskName) {
         TaskLog log = new TaskLog();
         log.setContent("log");
-        return new RecordTaskLogsCommand(providerRunId, fqn, versionTag, activityName, taskName,
+        return new RecordTaskLogsCommand(providerRunId, fqn, versionNumber, activityName, taskName,
                 new ArrayList<>(List.of(log)));
     }
 
@@ -158,7 +158,7 @@ class RecordTaskLogsTest {
         Activity activity = new Activity();
         activity.setUuid(uuid);
         activity.setDataProductFqn(fqn);
-        activity.setDataProductVersionTag("1.0.0");
+        activity.setDataProductVersionNumber("1.0.0");
         activity.setName("prod");
         activity.setStatus(ExecutionStatus.RUNNING);
         activity.setTasks(new ArrayList<>(List.of(tasks)));
@@ -199,16 +199,16 @@ class RecordTaskLogsTest {
         }
 
         @Override
-        public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName) {
+        public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionNumber, String activityName) {
             return stored.stream()
                     .filter(activity -> dataProductFqn.equals(activity.getDataProductFqn())
-                            && dataProductVersionTag.equals(activity.getDataProductVersionTag())
+                            && dataProductVersionNumber.equals(activity.getDataProductVersionNumber())
                             && activityName.equals(activity.getName()))
                     .toList();
         }
 
         @Override
-        public List<Activity> findActivitiesWithRunningTask(String providerRunId) {
+        public List<Activity> findActivitiesByTaskProviderRunId(String providerRunId) {
             return stored.stream()
                     .filter(activity -> activity.getTasks().stream().anyMatch(task ->
                             task.getStatus() == ExecutionStatus.RUNNING && providerRunId.equals(task.getProviderRunId())))

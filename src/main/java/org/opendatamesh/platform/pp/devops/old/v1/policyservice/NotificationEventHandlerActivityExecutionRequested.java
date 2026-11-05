@@ -75,7 +75,7 @@ class NotificationEventHandlerActivityExecutionRequested implements Notification
         request.setEvent(PolicyResPolicyEvaluationRequest.EventType.ACTIVITY_EXECUTION_RESULT);
         request.setResourceType(PolicyResPolicyEvaluationRequest.ResourceType.ACTIVITY_EXECUTION_RESULT);
         request.setDataProductId(PolicyV1LegacyIdentifier.fromFqn(activity.getDataProductFqn()));
-        request.setDataProductVersion(activity.getDataProductVersionTag());
+        request.setDataProductVersion(activity.getDataProductVersionNumber());
         request.setAfterState(inputEnricher.forActivityExecution(
                 eventContent, activity.getUuid(), activity.getDataProductVersionUuid()));
         return request;

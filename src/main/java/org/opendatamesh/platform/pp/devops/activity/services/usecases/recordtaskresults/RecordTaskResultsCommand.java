@@ -7,7 +7,7 @@ import java.util.List;
 public record RecordTaskResultsCommand(String providerRunId,
                                        String activityUuid,
                                        String dataProductFqn,
-                                       String dataProductVersionTag,
+                                       String dataProductVersionNumber,
                                        String activityName,
                                        String taskName,
                                        List<TaskResult> results) {

@@ -32,11 +32,11 @@ public interface ActivitiesRepository extends PagingAndSortingAndSpecificationEx
             return (root, query, cb) -> cb.equal(root.get(Activity_.dataProductFqn), dataProductFqn);
         }
 
-        public static Specification<Activity> hasDataProductVersionTag(String dataProductVersionTag) {
-            if (!StringUtils.hasText(dataProductVersionTag)) {
+        public static Specification<Activity> hasDataProductVersionNumber(String dataProductVersionNumber) {
+            if (!StringUtils.hasText(dataProductVersionNumber)) {
                 return null;
             }
-            return (root, query, cb) -> cb.equal(root.get(Activity_.dataProductVersionTag), dataProductVersionTag);
+            return (root, query, cb) -> cb.equal(root.get(Activity_.dataProductVersionNumber), dataProductVersionNumber);
         }
 
         public static Specification<Activity> hasName(String name) {
@@ -53,18 +53,14 @@ public interface ActivitiesRepository extends PagingAndSortingAndSpecificationEx
             return (root, query, cb) -> root.get(Activity_.status).in(statuses);
         }
 
-        /**
-         * Activities that have a RUNNING task with the given provider run id.
-         * Not a search filter: the caller guarantees a non-blank id, and the result is never null.
-         */
-        public static Specification<Activity> hasRunningTaskWithProviderRunId(String providerRunId) {
+        public static Specification<Activity> hasTaskWithProviderRunId(String providerRunId) {
+            if (!StringUtils.hasText(providerRunId)) {
+                return null;
+            }
             return (root, query, cb) -> {
                 query.distinct(true);
                 Join<Activity, Task> tasks = root.join(Activity_.tasks);
-                return cb.and(
-                        cb.equal(tasks.get(Task_.providerRunId), providerRunId),
-                        cb.equal(tasks.get(Task_.status), ExecutionStatus.RUNNING)
-                );
+                return cb.equal(tasks.get(Task_.providerRunId), providerRunId);
             };
         }
     }

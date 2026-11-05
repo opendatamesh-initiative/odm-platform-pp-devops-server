@@ -28,7 +28,7 @@ The descriptor defines activities and tasks as JSON objects. Definition order mu
 - **Nested owned entities (product-plane pattern):** A root owns nested records with cascade and orphan removal. Nested parts are not their own roots. This is the pattern for Task, Logs, and Results under Activity.
 - **Audit timestamps (`VersionedEntity` / `VersionedRes`):** Shared created/updated timestamps. Distinct from execution timestamps (`startedAt`, `finishedAt`) and from source timestamps (`generatedAt` on logs and results).
 - **Notification client:** Present; unused in this story.
-- **Registry Data Product Version (external):** Registry owns DPV identity. The version’s technical identity is a generated UUID. Its natural key on the version lifecycle event is the data product **FQN** plus the version **tag**. Those coordinates are unique only while that row exists; delete and recreate mints a new UUID and can reuse the FQN and tag. DevOps stores a reference. There is no foreign key into Registry and no existence check in this story.
+- **Registry Data Product Version (external):** Registry owns DPV identity. The version’s technical identity is a generated UUID. Its natural key is the data product **FQN** plus the **version number** (`versionNumber`, the descriptor's `info.version`). Those coordinates are unique only while that row exists; delete and recreate mints a new UUID and can reuse the FQN and version number. DevOps stores a reference. There is no foreign key into Registry and no existence check in this story.
 
 ### New Concepts Required
 
@@ -38,11 +38,11 @@ The descriptor defines activities and tasks as JSON objects. Definition order mu
 - **Results (nested, owned by Task):** Execution result records. Same ownership and **`generated_at`** rule as Logs. Activity does not store its own results.
 - **Activity/Task status:** Closed enumeration **`PENDING`**, **`RUNNING`**, **`SUCCEEDED`**, **`FAILED`**, **`CANCELLED`**. Same set on Activity and Task. Stored attribute, not a transition API. Default: `PENDING`. Persisted as `varchar(255)`. Later process: Activity status reflects the latest Task by `started_at`. This story stores the vocabulary and does not compute that rollup.
 - **External Pipeline / Pipeline Run:** Pipeline lives in the descriptor / workflow YAML. Pipeline Run is the provider’s execution. Task may store `provider_run_id` as an opaque string. Neither is a table in this service.
-- **Data Product Version reference:** Activity records which Registry version it belongs to, using the same three fields as the Registry version event: **`dataProductVersionUuid`**, **`dataProductFqn`**, and **`dataProductVersionTag`**. The UUID is the stable identity. FQN and tag are the natural key, kept so a label does not need a Registry call. The UI filters by the UUID. See Strategic Approach.
+- **Data Product Version reference:** Activity records which Registry version it belongs to, using three fields: **`dataProductVersionUuid`**, **`dataProductFqn`**, and **`dataProductVersionNumber`** (the descriptor's `info.version`, Registry V2 `versionNumber`; not the Git tag). The UUID is the stable identity. FQN and version number are the natural key, kept so a label does not need a Registry call. The UI filters by the UUID. See Strategic Approach.
 
 ### Conceptual relationships
 
-- **Data Product 1 — Data Product Version N** lives in Registry. This service stores the version UUID plus the event natural key (FQN and version tag). It does not own the version.
+- **Data Product 1 — Data Product Version N** lives in Registry. This service stores the version UUID plus the natural key (FQN and version number). It does not own the version.
 - **Data Product Version 1 — Activity N:** many activities may exist for one version. Descriptor order is `sort_order` on Activity.
 - **Activity 1 — Task N:** composition, including history. A re-run adds another Task. Previous Tasks stay. Deleting the Activity deletes Tasks, Logs, and Results.
 - **Task 1 — Logs N, Task 1 — Results N:** composition. Deleting the Task deletes its logs and results.
@@ -53,7 +53,7 @@ The descriptor defines activities and tasks as JSON objects. Definition order mu
 
 - **Anemic CRUD, fewest checks:** model, persistence, and REST create/read/update/delete/search of Activity. Required coordinates, closed status set, cascade delete, and the three timestamp meanings. The activity body is stored as received, including its tasks, logs, and results. No uniqueness. No “delete only when terminal”. Those belong to later use cases.
 - Activity is the only root and the only controller. Task, Logs, and Results are owned parts of that resource.
-- Activity requires the DPV UUID and a name. `dataProductFqn` and `dataProductVersionTag` are stored with it and stay optional at this layer (a version tag can be absent in Registry).
+- Activity requires the DPV UUID and a name. `dataProductFqn` and `dataProductVersionNumber` are stored with it and stay optional at this layer.
 - Omitted status on create is `PENDING`. Any value in the closed set may be stored. This story does not reject transitions and does not derive Activity status from Tasks.
 - `SKIPPED` and `TIMEOUT` are omitted until that vocabulary is decided.
 - A task exists only inside its activity. The parent is the activity being written and does not change afterward.
@@ -63,7 +63,7 @@ The descriptor defines activities and tasks as JSON objects. Definition order mu
 - `sort_order` on Activity and on Task is the descriptor position. This story persists the number and does not validate gaps or uniqueness.
 - Audit timestamps are not client-writable. `startedAt` and `finishedAt` are client-writable and are not auto-stamped on status change. `generatedAt` is client-writable source time and is not filled from `createdAt` when omitted.
 - Identity is a server-generated UUID. On update, the path id wins over the body id.
-- Search is paginated over activities. Filters: DPV UUID, FQN, version tag, name, status. There is no task search. Descriptor sequence sorts by `sort_order`. The UI filters activities by DPV UUID. Reading one activity returns its tasks, logs, and results.
+- Search is paginated over activities. Filters: DPV UUID, FQN, version number, name, status. There is no task search. Descriptor sequence sorts by `sort_order`. The UI filters activities by DPV UUID. Reading one activity returns its tasks, logs, and results.
 - Delete Activity is allowed in any status and cascades the nested graph. A task is deleted by leaving it out of the activity PUT, in any status.
 - HTTP follows this service: paginated JSON, 201/200/204, 400/404/409 via the existing exception types.
 
@@ -81,7 +81,7 @@ erDiagram
     varchar_36 uuid PK
     varchar_36 data_product_version_uuid "CRUD required, external Registry id"
     varchar_255 data_product_fqn "natural key"
-    varchar_255 data_product_version_tag "natural key"
+    varchar_255 data_product_version_number "natural key"
     varchar_255 name "CRUD required"
     integer sort_order
     varchar_255 status "CRUD default PENDING"
@@ -144,7 +144,7 @@ Leverage the generic filtered+mapped CRUD layer, repository specifications, MapS
 ### Key Design Decisions
 
 - **One root aggregate, one controller.** Activity owns Task, Logs, and Results. Writes that create, change, or remove a task are POST and PUT of the activity, stored as received. A task controller or a nested `/tasks` collection would make Task a second resource and would duplicate the aggregate write. Later, execute creates tasks through the activity use case, still without a general task CRUD API. → **Activity is the only root and the only HTTP adapter for this graph.**
-- **DPV reference by Registry UUID, plus the event natural key.** Microservice practice is to reference another bounded context by the owning service’s identity, not by a shared table and not by a natural key that can be reused (Vernon: reference other aggregates by identity; the downstream service stores the upstream id). Registry’s DPV UUID survives as a stable correlation value: delete and recreate of a version mints a new UUID, so old activities stay on the old id and DevOps does not have to delete them. FQN and tag alone would attach that history to the new version. The same three fields Registry puts on the version event are stored here. → **Required `data_product_version_uuid`. `data_product_fqn` and `data_product_version_tag` keep the natural key for labels. UI filters by UUID.** No Registry call and no foreign key in this story.
+- **DPV reference by Registry UUID, plus the event natural key.** Microservice practice is to reference another bounded context by the owning service’s identity, not by a shared table and not by a natural key that can be reused (Vernon: reference other aggregates by identity; the downstream service stores the upstream id). Registry’s DPV UUID survives as a stable correlation value: delete and recreate of a version mints a new UUID, so old activities stay on the old id and DevOps does not have to delete them. FQN and version number alone would attach that history to the new version. → **Required `data_product_version_uuid`. `data_product_fqn` and `data_product_version_number` keep the natural key for labels. UI filters by UUID.** No Registry call and no foreign key in this story.
 - **Descriptor order.** Activities and tasks are JSON objects; the first defined must stay on top. → **Nullable integer `sort_order` on Activity and on Task.** Persist only.
 - **Activity label is `name`.** The descriptor names the activity. → **`name` is the required label and a search field.**
 - **Status storage width.** Align the column with other string vocabularies in the product plane. → **`varchar(255)` on Activity and Task.**
@@ -169,8 +169,8 @@ Leverage the generic filtered+mapped CRUD layer, repository specifications, MapS
 - **Persist Pipeline and Pipeline Run locally:** Rejected. External.
 - **Results or errors stored on Activity:** Rejected. Logs and Results belong to Task.
 - **One text column for logs or for results:** Rejected. Blocks multiple records, source ordering, and later incremental append.
-- **DPV reference by natural keys only (FQN + version tag, no Registry UUID):** Rejected. Delete and recreate in Registry can reuse those keys and alias old runs onto the new version.
-- **DPV UUID with no FQN or tag:** Acceptable if every label comes from Registry. Rejected as the default because the UI should filter by UUID and still show the product FQN and version tag without a Registry call.
+- **DPV reference by natural keys only (FQN + version number, no Registry UUID):** Rejected. Delete and recreate in Registry can reuse those keys and alias old runs onto the new version.
+- **DPV UUID with no FQN or version number:** Acceptable if every label comes from Registry. Rejected as the default because the UI should filter by UUID and still show the product FQN and version number without a Registry call.
 - **Cascade-delete activities when Registry deletes the DPV:** Rejected. Execution history stays; the UUID already separates the old version from a recreated one.
 
 ---
@@ -179,7 +179,7 @@ Leverage the generic filtered+mapped CRUD layer, repository specifications, MapS
 
 ### Requirement Ambiguities
 
-- **Natural-key columns.** The canonical reference is the DPV UUID. `data_product_fqn` and `data_product_version_tag` are the natural key, the same fields as the Registry version event. Both stay nullable here: Registry does not always set a version tag.
+- **Natural-key columns.** The canonical reference is the DPV UUID. `data_product_fqn` and `data_product_version_number` are the natural key. Both stay nullable here, like the other activity columns.
 - **`generated_at` required or optional.** The field exists so source order is available. It is nullable here so a row can be stored when the producer has no timestamp. CRUD must not substitute `created_at`, or arrival order would be stored as source order.
 - **Task `name` required.** The natural key uses `name`, but this layer leaves `name` optional. A later use case can require it when tasks are created from the descriptor.
 - **`sort_order` on Activity.** Tasks need it because descriptor tasks are an ordered object. Activities are ordered the same way in the descriptor, so Activity has `sort_order` too.
@@ -216,7 +216,7 @@ Leverage the generic filtered+mapped CRUD layer, repository specifications, MapS
 - **Client-supplied UUID on create merging an existing row.** A re-run could then attach new logs to an old run. Mitigation: the server assigns a task UUID when the activity body does not identify an existing task of that activity.
 - **PUT omitting tasks deletes them.** That is the delete operation for this story, including an accidental empty list. Mitigation: document that the body is the desired graph; guards belong to later use cases.
 - **PUT replacing logs.** Correct for anemic replace. The later terminal-status poll stores the log it fetched; it does not merge a partial list into an overwrite.
-- **Filtering activities by FQN and tag instead of the UUID.** Mitigation: the UI and the primary index use `data_product_version_uuid`.
+- **Filtering activities by FQN and version number instead of the UUID.** Mitigation: the UI and the primary index use `data_product_version_uuid`.
 - **Search returning the full task/log/result graph.** Mitigation: list/search returns the Activity without the full graph; get-by-id returns the nested parts, which is how tasks are read.
 - **Placeholder Flyway `V1`.** Replace it with this schema before any product database applies the placeholder. BDMD-5437 extended that same file with the task execution columns, still before the first deployment. After the first deployment, do not edit `V1` again.
 - **H2 vs PostgreSQL types.** Keep portable types; details in REASONS Canvas.
@@ -234,4 +234,4 @@ The ticket has no numbered acceptance-criteria list. Coverage below is the state
 | 5 | Descriptor order preserved | Yes | `sort_order` on Activity and Task. No uniqueness in CRUD. |
 | 6 | Task run history | Yes | Multiple Tasks per Activity. Natural key is conceptual. Inspect by UUID. |
 | 7 | Source ordering of logs and results | Yes | `generated_at`. The 1:N collections also allow a later incremental append. |
-| 8 | External DPV reference | Yes | Required Registry DPV UUID plus `dataProductFqn` and `dataProductVersionTag`; UI filters by UUID; no Registry call. |
+| 8 | External DPV reference | Yes | Required Registry DPV UUID plus `dataProductFqn` and `dataProductVersionNumber`; UI filters by UUID; no Registry call. |

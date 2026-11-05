@@ -87,7 +87,7 @@ public class ActivityUseCaseController {
 
     @Operation(
             summary = "Request execution of an instrumented task",
-            description = "Addresses the activity by data product, version tag, and activity name. "
+            description = "Addresses the activity by data product, version number, and activity name. "
                     + "Stores the provider run id of the next pending instrumented task and requests its execution, "
                     + "and only when no other task is running. "
                     + "The call does not start an executor. The task stays pending until approval."
@@ -111,7 +111,7 @@ public class ActivityUseCaseController {
 
     @Operation(
             summary = "Record logs of an instrumented task",
-            description = "The task is addressed in one way only: by provider run id (task name optional, it narrows the match), or by data product, version tag, and activity name plus task name. "
+            description = "The task is addressed in one way only: by provider run id (task name optional, it narrows the match), or by data product, version number, and activity name plus task name. "
                     + "Appends logs to an instrumented task. Logs are accepted only while the task is running."
     )
     @ApiResponses(value = {
@@ -135,7 +135,7 @@ public class ActivityUseCaseController {
             summary = "Record results of a task",
             description = "Appends results to a task of either mode. "
                     + "The task is addressed in one way only: by provider run id (task name optional, it narrows the match), "
-                    + "by activity uuid plus task name, or by data product, version tag, and activity name plus task name. "
+                    + "by activity uuid plus task name, or by data product, version number, and activity name plus task name. "
                     + "Results are accepted only while the task is running."
     )
     @ApiResponses(value = {
@@ -157,7 +157,7 @@ public class ActivityUseCaseController {
 
     @Operation(
             summary = "Record the terminal status of an instrumented task",
-            description = "The task is addressed in one way only: by provider run id (task name optional, it narrows the match), or by data product, version tag, and activity name plus task name. "
+            description = "The task is addressed in one way only: by provider run id (task name optional, it narrows the match), or by data product, version number, and activity name plus task name. "
                     + "Records the last status of an instrumented task. "
                     + "Status is the last write and is accepted only while the task is running."
     )

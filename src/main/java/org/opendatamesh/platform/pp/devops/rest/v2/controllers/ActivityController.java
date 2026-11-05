@@ -75,7 +75,7 @@ public class ActivityController {
 
     @Operation(summary = "Search activities", description = "Retrieves a paginated list of activities based on search criteria. "
             + "The nested task graph is not loaded. The results can be sorted by any of the following properties: uuid, "
-            + "dataProductVersionUuid, dataProductFqn, dataProductVersionTag, name, sortOrder, status, startedAt, "
+            + "dataProductVersionUuid, dataProductFqn, dataProductVersionNumber, name, sortOrder, status, startedAt, "
             + "finishedAt, createdAt, updatedAt. Sort direction can be specified using 'asc' or 'desc' "
             + "(e.g., 'sort=name,desc').")
     @ApiResponses(value = {
@@ -90,7 +90,7 @@ public class ActivityController {
             @Parameter(description = "Search options for filtering activities")
             ActivitySearchOptions searchOptions,
             @Parameter(description = "Pagination and sorting parameters. Default sort is by sortOrder in ascending order. "
-                    + "Valid sort properties are: uuid, dataProductVersionUuid, dataProductFqn, dataProductVersionTag, "
+                    + "Valid sort properties are: uuid, dataProductVersionUuid, dataProductFqn, dataProductVersionNumber, "
                     + "name, sortOrder, status, startedAt, finishedAt, createdAt, updatedAt")
             @PageableDefault(page = 0, size = 20, sort = "sortOrder", direction = Sort.Direction.ASC)
             Pageable pageable

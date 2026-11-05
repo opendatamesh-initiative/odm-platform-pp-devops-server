@@ -4,7 +4,7 @@ Story **BDMD-5443**. This is the DevOps server change planned in `odm-cli/spdd/a
 
 ## Requirements
 
-- **Let a pipeline write to its running task with only its run id.** Record Task Logs, Record Task Results and Record Task Status accept `providerRunId` as a third way to address the task. The other two ways stay: the natural key (data product FQN, version tag, activity name, plus task name) and, for results only, the activity uuid plus task name. With the run id, a pipeline needs no version, FQN, activity or task name. This is what lets:
+- **Let a pipeline write to its running task with only its run id.** Record Task Logs, Record Task Results and Record Task Status accept `providerRunId` as a third way to address the task. The other two ways stay: the natural key (data product FQN, version number, activity name, plus task name) and, for results only, the activity uuid plus task name. With the run id, a pipeline needs no version, FQN, activity or task name. This is what lets:
   - `odm-cli complete-task` close an instrumented task;
   - a full-control pipeline upload results with `CI_PIPELINE_ID`.
 - **Never write to the wrong task:**
@@ -18,7 +18,7 @@ Story **BDMD-5443**. This is the DevOps server change planned in `odm-cli/spdd/a
   - the existing addresses and their messages, for other callers.
 - **Boundaries:**
   - no change to the executor contract, the database schema, events, Request Task Execution or Execute Task;
-  - no new search filter on `GET /activities`;
+  - one new search filter on `GET /activities`, `taskProviderRunId` (the run-id lookup reuses the activity search, per PR review);
   - no authorization.
 
 ## Entities
@@ -31,7 +31,7 @@ class Activity {
     <<entity, unchanged>>
     +String uuid
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String name
     +ExecutionStatus status
     +List~Task~ tasks
@@ -52,7 +52,7 @@ class RecordTaskLogsCommand {
     <<record>>
     +String providerRunId
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +List~TaskLog~ logs
@@ -63,7 +63,7 @@ class RecordTaskResultsCommand {
     +String providerRunId
     +String activityUuid
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +List~TaskResult~ results
@@ -73,7 +73,7 @@ class RecordTaskStatusCommand {
     <<record>>
     +String providerRunId
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +ExecutionStatus status
@@ -82,7 +82,7 @@ class RecordTaskStatusCommand {
 class ActivityTaskLogsCommandRes {
     +String providerRunId  «new»
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +List~TaskLogRes~ logs
@@ -92,7 +92,7 @@ class ActivityTaskResultsCommandRes {
     +String providerRunId  «new»
     +String activityUuid
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +List~TaskResultRes~ results
@@ -101,22 +101,22 @@ class ActivityTaskResultsCommandRes {
 class ActivityTaskStatusCommandRes {
     +String providerRunId  «new»
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +ExecutionStatus status
 }
 
-class ActivityService {
-    <<core service>>
-    +List~Activity~ findActivitiesWithRunningTask(String providerRunId)  «new»
+class ActivitySearchOptions {
+    <<search options>>
+    +String taskProviderRunId  «new»
 }
 
 Activity "1" *-- "1..N" Task : tasks
 ActivityTaskLogsCommandRes --> RecordTaskLogsCommand : ActivityUseCasesService maps
 ActivityTaskResultsCommandRes --> RecordTaskResultsCommand : ActivityUseCasesService maps
 ActivityTaskStatusCommandRes --> RecordTaskStatusCommand : ActivityUseCasesService maps
-ActivityService --> Activity : activities with a RUNNING task of that run id
+ActivitySearchOptions --> Activity : activities with a task of that run id
 ```
 
 Conservative scope:
@@ -132,9 +132,9 @@ Conservative scope:
      - with a run id, `taskName` is optional and narrows the match;
      - the possible responses are 404 (no `RUNNING` task with that run id) and 400 (more than one match, or a mixed address).
 2. **Address validation, in each use case's `validateCommand()`:**
-   - **Address kinds.** Each kind counts as present when any of its fields has text: the run id; the natural key (FQN, version tag, activity name); and, for results only, the activity uuid.
-   - **No address:** 400 "Provider run id or data product FQN, version tag, and activity name are required". For results: "Provider run id, activity UUID, or data product FQN, version tag, and activity name are required".
-   - **More than one kind:** 400 "Send only one task address: provider run id, activity UUID, or data product FQN, version tag, and activity name". Logs and status omit "activity UUID".
+   - **Address kinds.** Each kind counts as present when any of its fields has text: the run id; the natural key (FQN, version number, activity name); and, for results only, the activity uuid.
+   - **No address:** 400 "Provider run id or data product FQN, version number, and activity name are required". For results: "Provider run id, activity UUID, or data product FQN, version number, and activity name are required".
+   - **More than one kind:** 400 "Send only one task address: provider run id, activity UUID, or data product FQN, version number, and activity name". Logs and status omit "activity UUID".
    - **A natural key with missing parts:** the existing per-field messages, unchanged.
    - **`taskName`:** required with the natural key or the activity uuid ("Task name is required", unchanged), optional with the run id.
    - **Ordering.** The command's content checks (logs, results, status value) run after the address checks, as today.
@@ -148,9 +148,9 @@ Conservative scope:
      | More than 1 | `BadRequestException("Provider run id <id> matches more than one RUNNING task: task <name> of activity <uuid>, …")`. |
      | 1 | That activity and task are used, and `taskName` is set to the task's name. The rest of the procedure is unchanged: `requireInstrumented` (logs, status), `requireRunning`, append or set the status, save, and for status the advance and re-read. |
 4. **Persistence:**
-   - **Core service.** `ActivityService.findActivitiesWithRunningTask(String providerRunId)` runs a new specification, `ActivitiesRepository.Specs.hasRunningTaskWithProviderRunId(providerRunId)`: a join on `Activity.tasks` with `providerRunId = ? and status = RUNNING`, and `query.distinct(true)`.
+   - **Activity search.** The port searches with `ActivitySearchOptions`: `taskProviderRunId = <id>` and `statuses = {RUNNING}` (a task can only run inside a `RUNNING` activity). The filter maps to a new specification, `ActivitiesRepository.Specs.hasTaskWithProviderRunId(providerRunId)`: a join on `Activity.tasks` with `providerRunId = ?`, and `query.distinct(true)`. The task-level `RUNNING` check stays in the use case (`runningTasksWithRunId`).
    - **Index.** The existing index on `provider_run_id` serves the query.
-   - **Not a search filter.** The specification is not wired into `getSpecFromFilters`, so `GET /activities` does not gain a filter.
+   - **Search filter.** The specification is wired into `getSpecFromFilters`, so `GET /activities` gains the `taskProviderRunId` query parameter.
 5. **Concurrency:**
    - **Unchanged.** Every write still reloads the activity and overwrites it under the transactional port's serializable isolation. A race between a results upload and `ExecuteTask.recordProviderRunId` or the executor outcome ends in a 409 from `ResponseExceptionHandler`, which the CLI retries.
    - **Full-control gap.** The window between the task becoming `RUNNING` and its run id being stored is answered with 404. The caller retries; the server does not wait.
@@ -160,20 +160,20 @@ Conservative scope:
    | --- | --- |
    | The run id is not unique: old tasks keep their ids, and different CI systems can collide | Only `RUNNING` tasks match, and an ambiguous id is refused. |
    | A collision during the full-control gap | Accepted. `taskName` narrows the match for callers that know it. |
-   | A specification that returns `null` for a blank id would match every activity | The core service returns an empty list for a blank id. The specification never returns `null`. |
+   | A blank run id makes the filter return `null`, so the search would match every `RUNNING` activity | The use cases call the port only with a non-blank, trimmed run id. |
 
 ## Structure
 
 ### Inheritance Relationships
 1. **Use cases:** `RecordTaskLogs`, `RecordTaskResults` and `RecordTaskStatus` keep implementing `UseCase`. They stay package-private.
-2. **Core service:** `ActivityServiceImpl` keeps extending `GenericMappedAndFilteredCrudServiceImpl<ActivitySearchOptions, ActivityRes, Activity, String>` and implements the new `ActivityService` method.
+2. **Core service:** `ActivityServiceImpl` keeps extending `GenericMappedAndFilteredCrudServiceImpl<ActivitySearchOptions, ActivityRes, Activity, String>`. `ActivityService` gets no new method.
 3. **Exceptions:** no new types. `BadRequestException` (400) and `NotFoundException` (404) are the existing `DevOpsApiException` types, handled by `ResponseExceptionHandler`.
 
 ### Dependencies
 1. `ActivityUseCaseController` → `ActivityUseCasesService.recordTask{Logs,Results,Status}` (signatures unchanged).
 2. `ActivityUseCasesService` maps `providerRunId` from each `*CommandRes` into the command and calls the factories (unchanged).
-3. Each `RecordTask*PersistenceOutboundPortImpl` → `ActivityService.findActivitiesWithRunningTask` and `EntityInitAndDetachService.refresh`.
-4. `ActivityServiceImpl.findActivitiesWithRunningTask` → `ActivitiesRepository.findAll(Specification)`.
+3. Each `RecordTask*PersistenceOutboundPortImpl` → `ActivityService.findAllFiltered(Pageable.unpaged(), options)` and `EntityInitAndDetachService.refresh`.
+4. `ActivityServiceImpl.getSpecFromFilters` → `ActivitiesRepository.Specs.hasTaskWithProviderRunId`.
 
 ### Layered Architecture
 1. **Controller** (`rest.v2.controllers.ActivityUseCaseController`): OpenAPI descriptions only.
@@ -181,7 +181,7 @@ Conservative scope:
 3. **Use cases service** (`activity.services.ActivityUseCasesService`): `*Res` → command, as today.
 4. **Use cases** (`activity.services.usecases.recordtask{logs,results,status}`): the address rule and the run-id lookup policy.
 5. **Ports** (`RecordTask*PersistenceOutboundPort[Impl]`): the new query, with no decision.
-6. **Core and repository** (`activity.services.core.ActivityService[Impl]`, `activity.repositories.ActivitiesRepository`): the specification and the query.
+6. **Search options, core and repository** (`rest.v2.resources.activity.ActivitySearchOptions`, `activity.services.core.ActivityServiceImpl`, `activity.repositories.ActivitiesRepository`): the filter field, its wiring and the specification.
 7. **Exception handling:** the existing `ResponseExceptionHandler`. Nothing changes.
 
 ## Operations
@@ -189,21 +189,15 @@ Conservative scope:
 Execution order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9.
 
 ### 1. Update Repository - `ActivitiesRepository.Specs`
-1. Responsibility: select the activities that have a `RUNNING` task with a given provider run id.
-2. Method: `static Specification<Activity> hasRunningTaskWithProviderRunId(String providerRunId)`. Logic:
-   - `query.distinct(true)`;
-   - `Join<Activity, Task> tasks = root.join(Activity_.tasks)`;
-   - `cb.and(cb.equal(tasks.get(Task_.providerRunId), providerRunId), cb.equal(tasks.get(Task_.status), ExecutionStatus.RUNNING))`.
-3. Constraints:
-   - It never returns `null`. Its caller guarantees a non-blank id.
-   - It is not added to `getSpecFromFilters`.
+1. Responsibility: select the activities that have a task with a given provider run id.
+2. Method: `static Specification<Activity> hasTaskWithProviderRunId(String providerRunId)`. Logic:
+   - a blank id → `null`, like the other filter specs;
+   - otherwise `query.distinct(true)`, `Join<Activity, Task> tasks = root.join(Activity_.tasks)`, and `cb.equal(tasks.get(Task_.providerRunId), providerRunId)`.
 
-### 2. Update Core Service - `ActivityService`, `ActivityServiceImpl`
-1. Interface: `List<Activity> findActivitiesWithRunningTask(String providerRunId)`. The Javadoc says it returns the activities with a `RUNNING` task whose provider run id equals the given one, without loading their tasks.
-2. Implementation logic:
-   - A blank `providerRunId` → `List.of()`.
-   - Otherwise → `getRepository().findAll(ActivitiesRepository.Specs.hasRunningTaskWithProviderRunId(providerRunId))`.
-3. Transactions: it runs inside the caller's transaction (the use case's `TransactionalOutboundPort`), like `findAllFiltered` from the existing ports.
+### 2. Update Search Options and Core Service - `ActivitySearchOptions`, `ActivityServiceImpl`
+1. `ActivitySearchOptions`: add `private String taskProviderRunId;` with a getter and a setter.
+2. `ActivityServiceImpl.getSpecFromFilters`: add `hasTaskWithProviderRunId(filters.getTaskProviderRunId())`.
+3. `ActivityService` gets no new method. The ports use `findAllFiltered`, which runs inside the caller's transaction (the use case's `TransactionalOutboundPort`), like `findOpenActivities`.
 
 ### 3. Update Resources - `ActivityTaskLogsCommandRes`, `ActivityTaskResultsCommandRes`, `ActivityTaskStatusCommandRes`
 1. Add `private String providerRunId;` with a getter and a setter. It is the first field.
@@ -215,8 +209,8 @@ Execution order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9.
 2. The null-`commandRes` branches pass one more `null`.
 
 ### 5. Update Use Case - `RecordTaskResults` (`activity.services.usecases.recordtaskresults`)
-1. **Command:** `RecordTaskResultsCommand(String providerRunId, String activityUuid, String dataProductFqn, String dataProductVersionTag, String activityName, String taskName, List<TaskResult> results)`.
-2. **Port:** add `List<Activity> findActivitiesWithRunningTask(String providerRunId)` to `RecordTaskResultsPersistenceOutboundPort`. In the implementation, call `activityService.findActivitiesWithRunningTask(providerRunId)`, then load each match with the existing `findForUpdate(uuid)` (`findOne` + `refresh`) so its tasks are loaded.
+1. **Command:** `RecordTaskResultsCommand(String providerRunId, String activityUuid, String dataProductFqn, String dataProductVersionNumber, String activityName, String taskName, List<TaskResult> results)`.
+2. **Port:** add `List<Activity> findActivitiesByTaskProviderRunId(String providerRunId)` to `RecordTaskResultsPersistenceOutboundPort`. It returns a list because a run id is not unique across activities, and the use case must refuse an ambiguous one. In the implementation, search with `ActivitySearchOptions` (`taskProviderRunId`, `statuses = {RUNNING}`) through `activityService.findAllFiltered(Pageable.unpaged(), options)`, then load each match with the existing `findForUpdate(uuid)` (`findOne` + `refresh`) so its tasks are loaded.
 3. **`execute()`** keeps its shape, with one named step for loading:
    ```
    validateCommand();
@@ -233,7 +227,7 @@ Execution order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9.
    - activity uuid → `persistencePort.findForUpdate(activityUuid)`;
    - otherwise → `openActivityByNaturalKey()`, which is the current inline block moved unchanged.
 5. **`activityOfRunningTask()`:**
-   1. Read `persistencePort.findActivitiesWithRunningTask(providerRunId)`.
+   1. Read `persistencePort.findActivitiesByTaskProviderRunId(providerRunId)`.
    2. Collect the candidates with `runningTasksWithRunId(activities)`.
    3. Apply `noRunningTask(candidates)` and `ambiguousRunId(candidates)`.
    4. Set `taskName` to the candidate's name.
@@ -252,10 +246,10 @@ Execution order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9.
    - `runningTasksWithRunId(List<Activity>)`, which keeps tasks with status `RUNNING`, an equal `providerRunId` and, if `taskName` has text, an equal name.
 
    The messages are those in Approach 2 and 3.
-8. **Javadoc of the class:** "The caller sends the provider run id, the activity uuid, or the data product, version tag, and activity name."
+8. **Javadoc of the class:** "The caller sends the provider run id, the activity uuid, or the data product, version number, and activity name."
 
 ### 6. Update Use Case - `RecordTaskLogs` (`activity.services.usecases.recordtasklogs`)
-1. **Command:** `RecordTaskLogsCommand(String providerRunId, String dataProductFqn, String dataProductVersionTag, String activityName, String taskName, List<TaskLog> logs)`.
+1. **Command:** `RecordTaskLogsCommand(String providerRunId, String dataProductFqn, String dataProductVersionNumber, String activityName, String taskName, List<TaskLog> logs)`.
 2. **Port:** the same new method and implementation as in Operation 5.2.
 3. **`execute()`:**
    ```
@@ -275,8 +269,8 @@ Execution order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9.
 6. **`requireInstrumented`:** unchanged. A full-control task found by run id is refused with "Task <name> is not instrumented".
 
 ### 7. Update Use Case - `RecordTaskStatus` (`activity.services.usecases.recordtaskstatus`)
-1. **Command:** `RecordTaskStatusCommand(String providerRunId, String dataProductFqn, String dataProductVersionTag, String activityName, String taskName, ExecutionStatus status)`.
-2. **Port:** add `findActivitiesWithRunningTask` to `RecordTaskStatusPersistenceOutboundPort` and its implementation, as in Operation 5.2.
+1. **Command:** `RecordTaskStatusCommand(String providerRunId, String dataProductFqn, String dataProductVersionNumber, String activityName, String taskName, ExecutionStatus status)`.
+2. **Port:** add `findActivitiesByTaskProviderRunId` to `RecordTaskStatusPersistenceOutboundPort` and its implementation, as in Operation 5.2.
 3. **`execute()`:** unchanged: `validateCommand(); recordTerminalStatus(); advancePort.advanceActivity(activityUuid); presentAdvancedActivity();`.
 4. **`recordTerminalStatus()`:** the callback's first statement becomes `Activity activity = loadActivity();` (two branches, as in Operation 6.3). The rest is unchanged:
    - `resolveTask`;
@@ -370,7 +364,7 @@ Feature: Address a running task by provider run id
 
   Scenario: Existing natural-key address still works
     Given an instrumented task is RUNNING
-    When the CLI records the status with the data product, version tag, activity and task name
+    When the CLI records the status with the data product, version number, activity and task name
     Then the response is 200 as before
 ```
 
@@ -412,7 +406,7 @@ This service's norms (`spdd/norms/README.md`, `USE_CASE_IMPLEMENTATION.md`, `GEN
 5. **Progressive discovery** (`odm-cli/spdd/norms/PROGRESSIVE_DISCOVERY.md`): not applied to this change. Its index README, structure test and README guard cover the whole `activity.services.usecases` module, which this story does not restructure. The touched units have no step classes, so they need no L0 README under that norm either.
 6. **CRUD and persistence** (`GENERIC-CRUD-GUIDELINES.md`):
    - The query is a static `Specs` method on the repository, exposed through the core service's entity-level API.
-   - It is not added to `getSpecFromFilters`, so the public search contract is unchanged.
+   - It is added to `getSpecFromFilters`, so the public search gains the `taskProviderRunId` filter.
    - No Flyway change.
 7. **API** (`odm-cli/spdd/norms/API_DESIGN.md`):
    - The change is additive (a new optional field), so it stays in `/api/v2`.
@@ -456,7 +450,7 @@ This service's norms (`spdd/norms/README.md`, `USE_CASE_IMPLEMENTATION.md`, `GEN
    - No stack traces or internal details in responses beyond `ErrorRes`.
 7. **Technical constraints:**
    - Java 21, Spring Boot 3.5, JPA criteria with the generated metamodel (`Activity_`, `Task_`).
-   - The specification never returns `null`. `findActivitiesWithRunningTask` returns an empty list for a blank id.
+   - The filter specification returns `null` for a blank id, like its siblings. The use cases never call the port with a blank id.
    - No changes to `utils/**`.
 8. **Data constraints:**
    - `providerRunId` is trimmed. An empty value counts as absent.

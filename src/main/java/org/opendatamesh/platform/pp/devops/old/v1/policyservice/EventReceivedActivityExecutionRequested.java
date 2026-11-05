@@ -44,7 +44,7 @@ class EventReceivedActivityExecutionRequested {
         private Integer sortOrder;
         private String dataProductVersionUuid;
         private String dataProductFqn;
-        private String dataProductVersionTag;
+        private String dataProductVersionNumber;
 
         public String getUuid() {
             return uuid;
@@ -86,12 +86,12 @@ class EventReceivedActivityExecutionRequested {
             this.dataProductFqn = dataProductFqn;
         }
 
-        public String getDataProductVersionTag() {
-            return dataProductVersionTag;
+        public String getDataProductVersionNumber() {
+            return dataProductVersionNumber;
         }
 
-        public void setDataProductVersionTag(String dataProductVersionTag) {
-            this.dataProductVersionTag = dataProductVersionTag;
+        public void setDataProductVersionNumber(String dataProductVersionNumber) {
+            this.dataProductVersionNumber = dataProductVersionNumber;
         }
     }
 }

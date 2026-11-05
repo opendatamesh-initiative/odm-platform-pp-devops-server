@@ -6,7 +6,7 @@ import java.util.List;
 
 public record RecordTaskLogsCommand(String providerRunId,
                                     String dataProductFqn,
-                                    String dataProductVersionTag,
+                                    String dataProductVersionNumber,
                                     String activityName,
                                     String taskName,
                                     List<TaskLog> logs) {

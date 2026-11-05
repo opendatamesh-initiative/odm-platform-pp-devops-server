@@ -23,10 +23,10 @@ class RecordTaskLogsPersistenceOutboundPortImpl implements RecordTaskLogsPersist
     }
 
     @Override
-    public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName) {
+    public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionNumber, String activityName) {
         ActivitySearchOptions options = new ActivitySearchOptions();
         options.setDataProductFqn(dataProductFqn);
-        options.setDataProductVersionTag(dataProductVersionTag);
+        options.setDataProductVersionNumber(dataProductVersionNumber);
         options.setName(activityName);
         options.setStatuses(EnumSet.of(ExecutionStatus.PENDING, ExecutionStatus.RUNNING));
         return activityService.findAllFiltered(Pageable.unpaged(), options).getContent();
@@ -40,9 +40,12 @@ class RecordTaskLogsPersistenceOutboundPortImpl implements RecordTaskLogsPersist
     }
 
     @Override
-    public List<Activity> findActivitiesWithRunningTask(String providerRunId) {
+    public List<Activity> findActivitiesByTaskProviderRunId(String providerRunId) {
+        ActivitySearchOptions options = new ActivitySearchOptions();
+        options.setTaskProviderRunId(providerRunId);
+        options.setStatuses(EnumSet.of(ExecutionStatus.RUNNING));
         List<Activity> loaded = new ArrayList<>();
-        for (Activity match : activityService.findActivitiesWithRunningTask(providerRunId)) {
+        for (Activity match : activityService.findAllFiltered(Pageable.unpaged(), options).getContent()) {
             loaded.add(findForUpdate(match.getUuid()));
         }
         return loaded;

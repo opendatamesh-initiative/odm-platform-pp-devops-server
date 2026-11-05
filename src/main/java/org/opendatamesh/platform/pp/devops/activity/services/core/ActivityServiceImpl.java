@@ -72,22 +72,15 @@ public class ActivityServiceImpl
     }
 
     @Override
-    public List<Activity> findActivitiesWithRunningTask(String providerRunId) {
-        if (!StringUtils.hasText(providerRunId)) {
-            return List.of();
-        }
-        return getRepository().findAll(ActivitiesRepository.Specs.hasRunningTaskWithProviderRunId(providerRunId));
-    }
-
-    @Override
     protected Specification<Activity> getSpecFromFilters(ActivitySearchOptions filters) {
         List<Specification<Activity>> specs = new ArrayList<>();
         if (filters != null) {
             addIfPresent(specs, ActivitiesRepository.Specs.hasDataProductVersionUuid(filters.getDataProductVersionUuid()));
             addIfPresent(specs, ActivitiesRepository.Specs.hasDataProductFqn(filters.getDataProductFqn()));
-            addIfPresent(specs, ActivitiesRepository.Specs.hasDataProductVersionTag(filters.getDataProductVersionTag()));
+            addIfPresent(specs, ActivitiesRepository.Specs.hasDataProductVersionNumber(filters.getDataProductVersionNumber()));
             addIfPresent(specs, ActivitiesRepository.Specs.hasName(filters.getName()));
             addIfPresent(specs, ActivitiesRepository.Specs.hasStatusIn(filters.getStatuses()));
+            addIfPresent(specs, ActivitiesRepository.Specs.hasTaskWithProviderRunId(filters.getTaskProviderRunId()));
         }
         return SpecsUtils.combineWithAnd(specs);
     }
@@ -107,7 +100,7 @@ public class ActivityServiceImpl
         activity.setUuid(trimToNull(activity.getUuid()));
         activity.setDataProductVersionUuid(trimToNull(activity.getDataProductVersionUuid()));
         activity.setDataProductFqn(trimToNull(activity.getDataProductFqn()));
-        activity.setDataProductVersionTag(trimToNull(activity.getDataProductVersionTag()));
+        activity.setDataProductVersionNumber(trimToNull(activity.getDataProductVersionNumber()));
         activity.setName(trimToNull(activity.getName()));
 
         if (!StringUtils.hasText(activity.getDataProductVersionUuid())) {
@@ -125,8 +118,8 @@ public class ActivityServiceImpl
         if (activity.getDataProductFqn() != null && activity.getDataProductFqn().length() > 255) {
             throw new BadRequestException("Data product FQN cannot exceed 255 characters");
         }
-        if (activity.getDataProductVersionTag() != null && activity.getDataProductVersionTag().length() > 255) {
-            throw new BadRequestException("Data product version tag cannot exceed 255 characters");
+        if (activity.getDataProductVersionNumber() != null && activity.getDataProductVersionNumber().length() > 255) {
+            throw new BadRequestException("Data product version number cannot exceed 255 characters");
         }
 
         Set<String> taskUuids = new HashSet<>();

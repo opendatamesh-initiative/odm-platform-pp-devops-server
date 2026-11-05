@@ -30,7 +30,7 @@ classDiagram
     +String uuid
     +String dataProductVersionUuid
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String name
     +Integer sortOrder
     +ExecutionStatus status

@@ -23,9 +23,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class RecordTaskResultsTest {
 
     private static final String NO_ADDRESS =
-            "Provider run id, activity UUID, or data product FQN, version tag, and activity name are required";
+            "Provider run id, activity UUID, or data product FQN, version number, and activity name are required";
     private static final String MIXED_ADDRESS =
-            "Send only one task address: provider run id, activity UUID, or data product FQN, version tag, and activity name";
+            "Send only one task address: provider run id, activity UUID, or data product FQN, version number, and activity name";
 
     /**
      * Feature: Address a running task by provider run id
@@ -197,7 +197,7 @@ class RecordTaskResultsTest {
      *
      * Scenario: Existing natural-key address still works
      *   Given an instrumented task is RUNNING
-     *   When the CLI records the status with the data product, version tag, activity and task name
+     *   When the CLI records the status with the data product, version number, activity and task name
      *   Then the response is 200 as before
      */
     @Test
@@ -214,7 +214,7 @@ class RecordTaskResultsTest {
                 .hasMessage("Task name is required");
         assertThatThrownBy(() -> run(command(null, null, "dp-1", null, "prod", "deploy"), persistence, new ArrayList<>()))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("Data product version tag is required");
+                .hasMessage("Data product version number is required");
     }
 
     private static void run(RecordTaskResultsCommand command, FakePersistence persistence, List<Activity> presented) {
@@ -222,10 +222,10 @@ class RecordTaskResultsTest {
     }
 
     private static RecordTaskResultsCommand command(String providerRunId, String activityUuid, String fqn,
-                                                    String versionTag, String activityName, String taskName) {
+                                                    String versionNumber, String activityName, String taskName) {
         TaskResult result = new TaskResult();
         result.setContent("result");
-        return new RecordTaskResultsCommand(providerRunId, activityUuid, fqn, versionTag, activityName, taskName,
+        return new RecordTaskResultsCommand(providerRunId, activityUuid, fqn, versionNumber, activityName, taskName,
                 new ArrayList<>(List.of(result)));
     }
 
@@ -233,7 +233,7 @@ class RecordTaskResultsTest {
         Activity activity = new Activity();
         activity.setUuid(uuid);
         activity.setDataProductFqn(fqn);
-        activity.setDataProductVersionTag("1.0.0");
+        activity.setDataProductVersionNumber("1.0.0");
         activity.setName("prod");
         activity.setStatus(ExecutionStatus.RUNNING);
         activity.setTasks(new ArrayList<>(List.of(tasks)));
@@ -274,16 +274,16 @@ class RecordTaskResultsTest {
         }
 
         @Override
-        public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName) {
+        public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionNumber, String activityName) {
             return stored.stream()
                     .filter(activity -> dataProductFqn.equals(activity.getDataProductFqn())
-                            && dataProductVersionTag.equals(activity.getDataProductVersionTag())
+                            && dataProductVersionNumber.equals(activity.getDataProductVersionNumber())
                             && activityName.equals(activity.getName()))
                     .toList();
         }
 
         @Override
-        public List<Activity> findActivitiesWithRunningTask(String providerRunId) {
+        public List<Activity> findActivitiesByTaskProviderRunId(String providerRunId) {
             return stored.stream()
                     .filter(activity -> activity.getTasks().stream().anyMatch(task ->
                             task.getStatus() == ExecutionStatus.RUNNING && providerRunId.equals(task.getProviderRunId())))

@@ -5,7 +5,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 import java.util.List;
 
 interface RequestTaskExecutionPersistenceOutboundPort {
-    List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName);
+    List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionNumber, String activityName);
 
     Activity findForUpdate(String uuid);
 
