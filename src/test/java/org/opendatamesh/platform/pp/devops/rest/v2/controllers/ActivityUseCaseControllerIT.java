@@ -158,7 +158,7 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
      * Feature: Execute an activity
      *
      * Scenario: A request that cannot run is refused
-     *   Given an execute request with no tasks, or without the activity sortOrder, or with a task without executor name or executor parameters
+     *   Given an execute request with no tasks, or without the activity sortOrder or data product version number, or with a task without executor name or executor parameters
      *   When the UI executes the activity
      *   Then the response is 400
      *   And no activity is stored and no event is emitted
@@ -174,6 +174,10 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
         ActivityRes noSortOrder = executableActivity("dpv-refuse", "prod", 1);
         noSortOrder.setSortOrder(null);
         assertBadRequest(noSortOrder, "Activity sort order is required");
+
+        ActivityRes noVersionNumber = executableActivity("dpv-refuse", "prod", 1);
+        noVersionNumber.setDataProductVersionNumber(" ");
+        assertBadRequest(noVersionNumber, "Data product version number is required");
 
         ActivityRes noExecutor = executableActivity("dpv-refuse", "prod", 1);
         noExecutor.getTasks().get(0).setExecutorName(" ");
@@ -461,6 +465,7 @@ public class ActivityUseCaseControllerIT extends DevOpsApplicationIT {
     private static ActivityRes namedActivity(String dataProductVersionUuid, String name, int sortOrder) {
         ActivityRes activity = new ActivityRes();
         activity.setDataProductVersionUuid(dataProductVersionUuid);
+        activity.setDataProductVersionNumber("1.0.0");
         activity.setName(name);
         activity.setSortOrder(sortOrder);
         return activity;

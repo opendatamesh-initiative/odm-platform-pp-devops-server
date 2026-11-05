@@ -16,7 +16,7 @@ import java.util.List;
 
 /**
  * The CLI asks for the next pending instrumented task.
- * It addresses the activity by data product, version tag, and activity name.
+ * It addresses the activity by data product, version number, and activity name.
  * The provider run id is stored, task execution is requested, and the task stays pending.
  * A later task is refused while an earlier one is pending or while another task is running.
  */
@@ -30,7 +30,7 @@ class RequestTaskExecution implements UseCase {
     private final TransactionalOutboundPort transactionalPort;
 
     private String dataProductFqn;
-    private String dataProductVersionTag;
+    private String dataProductVersionNumber;
     private String activityName;
     private String taskName;
     private String providerRunId;
@@ -53,14 +53,14 @@ class RequestTaskExecution implements UseCase {
     public void execute() {
         validateCommand();
         transactionalPort.doInTransaction(() -> {
-            List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionTag, activityName);
+            List<Activity> matches = persistencePort.findOpenActivities(dataProductFqn, dataProductVersionNumber, activityName);
             if (matches.isEmpty()) {
                 throw new NotFoundException("No PENDING or RUNNING activity " + activityName
-                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+                        + " for data product " + dataProductFqn + " version " + dataProductVersionNumber);
             }
             if (matches.size() > 1) {
                 throw new BadRequestException("More than one open activity " + activityName
-                        + " for data product " + dataProductFqn + " version " + dataProductVersionTag);
+                        + " for data product " + dataProductFqn + " version " + dataProductVersionNumber);
             }
             Activity activity = persistencePort.findForUpdate(matches.get(0).getUuid());
             requireRunning(activity);
@@ -79,7 +79,7 @@ class RequestTaskExecution implements UseCase {
 
     private void validateCommand() {
         dataProductFqn = command == null ? null : trimToNull(command.dataProductFqn());
-        dataProductVersionTag = command == null ? null : trimToNull(command.dataProductVersionTag());
+        dataProductVersionNumber = command == null ? null : trimToNull(command.dataProductVersionNumber());
         activityName = command == null ? null : trimToNull(command.activityName());
         taskName = command == null ? null : trimToNull(command.taskName());
         providerRunId = command == null ? null : trimToNull(command.providerRunId());
@@ -96,8 +96,8 @@ class RequestTaskExecution implements UseCase {
         if (!StringUtils.hasText(dataProductFqn)) {
             throw new BadRequestException("Data product FQN is required");
         }
-        if (!StringUtils.hasText(dataProductVersionTag)) {
-            throw new BadRequestException("Data product version tag is required");
+        if (!StringUtils.hasText(dataProductVersionNumber)) {
+            throw new BadRequestException("Data product version number is required");
         }
         if (!StringUtils.hasText(activityName)) {
             throw new BadRequestException("Activity name is required");

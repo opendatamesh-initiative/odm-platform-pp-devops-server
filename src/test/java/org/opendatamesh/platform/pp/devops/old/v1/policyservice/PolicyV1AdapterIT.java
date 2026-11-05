@@ -322,13 +322,13 @@ public class PolicyV1AdapterIT extends DevOpsApplicationIT {
      * Feature: The Policy document is the V2 event content with the enrichment
      *
      * Scenario: Policy request carries the legacy product identifiers
-     *   Given an activity on data product fqn "urn:org.opendatamesh:dataproducts:sample-product" and version tag "1.0.0"
+     *   Given an activity on data product fqn "urn:org.opendatamesh:dataproducts:sample-product" and version number "1.0.0"
      *   When DevOps receives an ACTIVITY_EXECUTION_REQUESTED event
      *   Then the Policy request dataProductId is "a72bbe0c-18c6-30b0-a03a-5392d6a770ea"
      *   And the Policy request dataProductVersion is "1.0.0"
      */
     @Test
-    public void whenActivityExecutionRequested_thenRequestCarriesLegacyIdAndVersionTag() {
+    public void whenActivityExecutionRequested_thenRequestCarriesLegacyIdAndVersionNumber() {
         // Given
         ActivityRes activity = persistActivity("dpv-legacy-id", "prod", 3, ExecutionStatus.PENDING);
         when(policyClient.validateInput(any(), anyBoolean())).thenReturn(response());
@@ -638,7 +638,7 @@ public class PolicyV1AdapterIT extends DevOpsApplicationIT {
         ActivityRes activity = new ActivityRes();
         activity.setDataProductVersionUuid(dataProductVersionUuid);
         activity.setDataProductFqn(FQN);
-        activity.setDataProductVersionTag(VERSION_TAG);
+        activity.setDataProductVersionNumber(VERSION_TAG);
         activity.setName(name);
         activity.setSortOrder(sortOrder);
         activity.setStatus(status);

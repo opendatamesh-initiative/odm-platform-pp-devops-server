@@ -44,7 +44,7 @@ final class PolicyV1AdapterTestSupport {
         activity.put("uuid", persisted.getUuid());
         activity.put("dataProductVersionUuid", persisted.getDataProductVersionUuid());
         activity.put("dataProductFqn", FQN);
-        activity.put("dataProductVersionTag", VERSION_TAG);
+        activity.put("dataProductVersionNumber", VERSION_TAG);
         activity.put("name", persisted.getName());
         activity.put("sortOrder", persisted.getSortOrder());
         activity.put("status", persisted.getStatus().name());

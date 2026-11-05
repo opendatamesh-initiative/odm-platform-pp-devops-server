@@ -22,10 +22,10 @@ class RequestTaskExecutionPersistenceOutboundPortImpl implements RequestTaskExec
     }
 
     @Override
-    public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName) {
+    public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionNumber, String activityName) {
         ActivitySearchOptions options = new ActivitySearchOptions();
         options.setDataProductFqn(dataProductFqn);
-        options.setDataProductVersionTag(dataProductVersionTag);
+        options.setDataProductVersionNumber(dataProductVersionNumber);
         options.setName(activityName);
         options.setStatuses(EnumSet.of(ExecutionStatus.PENDING, ExecutionStatus.RUNNING));
         return activityService.findAllFiltered(Pageable.unpaged(), options).getContent();

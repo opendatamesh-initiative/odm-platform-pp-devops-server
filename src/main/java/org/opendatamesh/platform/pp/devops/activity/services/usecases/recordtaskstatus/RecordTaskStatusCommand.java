@@ -2,8 +2,9 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.recordtas
 
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 
-public record RecordTaskStatusCommand(String dataProductFqn,
-                                      String dataProductVersionTag,
+public record RecordTaskStatusCommand(String providerRunId,
+                                      String dataProductFqn,
+                                      String dataProductVersionNumber,
                                       String activityName,
                                       String taskName,
                                       ExecutionStatus status) {

@@ -8,22 +8,33 @@ import java.util.List;
 @Schema(name = "ActivityTaskLogsCommand", description = "Logs to append to one running instrumented task")
 public class ActivityTaskLogsCommandRes {
 
-    @Schema(description = "Fully qualified name of the data product")
+    @Schema(description = "Provider run id of the RUNNING task to address. Use it instead of the other address fields. With it, taskName is optional and narrows the match.")
+    private String providerRunId;
+
+    @Schema(description = "Alternative address: fully qualified name of the data product, sent together with the version number and activity name")
     private String dataProductFqn;
 
-    @Schema(description = "Version tag of the data product")
-    private String dataProductVersionTag;
+    @Schema(description = "Alternative address: version number of the data product, sent together with the FQN and activity name")
+    private String dataProductVersionNumber;
 
-    @Schema(description = "Name of the open activity")
+    @Schema(description = "Alternative address: name of the open activity, sent together with the FQN and version number")
     private String activityName;
 
-    @Schema(description = "Name of the task on that activity")
+    @Schema(description = "Name of the task on that activity. Required with the data product address, optional with the provider run id, where it narrows the match")
     private String taskName;
 
     @Schema(description = "Log rows to append. Each row carries content and an optional source time")
     private List<TaskLogRes> logs;
 
     public ActivityTaskLogsCommandRes() {
+    }
+
+    public String getProviderRunId() {
+        return providerRunId;
+    }
+
+    public void setProviderRunId(String providerRunId) {
+        this.providerRunId = providerRunId;
     }
 
     public String getDataProductFqn() {
@@ -34,12 +45,12 @@ public class ActivityTaskLogsCommandRes {
         this.dataProductFqn = dataProductFqn;
     }
 
-    public String getDataProductVersionTag() {
-        return dataProductVersionTag;
+    public String getDataProductVersionNumber() {
+        return dataProductVersionNumber;
     }
 
-    public void setDataProductVersionTag(String dataProductVersionTag) {
-        this.dataProductVersionTag = dataProductVersionTag;
+    public void setDataProductVersionNumber(String dataProductVersionNumber) {
+        this.dataProductVersionNumber = dataProductVersionNumber;
     }
 
     public String getActivityName() {

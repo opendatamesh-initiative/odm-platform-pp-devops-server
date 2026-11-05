@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.GitRefType;
+import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.rest.v2.DevOpsApplicationIT;
 import org.opendatamesh.platform.pp.devops.rest.v2.RoutesV2;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.ErrorRes;
@@ -976,6 +977,80 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         assertThat(stored.getPipelineParameters()).containsEntry("region", "eu");
     }
 
+    /**
+     * Scenario: Tasks carry the execution mode of their executor
+     *   Given executor "starter" declared full-control and "cli" declared instrumented
+     *   And an activity with one task on each and one task on an executor that is not declared
+     *   When the client GETs /api/v2/pp/devops/activities/{uuid}
+     *   Then the response is 200
+     *   And the "starter" task is FULL_CONTROL, the "cli" task INSTRUMENTED, and the undeclared one null
+     * Traces to {@code spdd/prompt/BDMD-5518-202611031629-[Feat]-api-task-execution-mode.md}.
+     */
+    @Test
+    public void whenGetActivityThenTasksCarryExecutionModeOfTheirExecutor() {
+        // Given
+        ActivityRes payload = newActivity("dpv-execution-mode", "execution-mode");
+        payload.setTasks(List.of(
+                taskOn("full-control-task", "starter"),
+                taskOn("instrumented-task", "cli"),
+                taskOn("retired-task", "retired")
+        ));
+        ActivityRes created = createActivity(payload);
+
+        // When
+        ResponseEntity<ActivityRes> response = rest.getForEntity(
+                apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
+                ActivityRes.class
+        );
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getTasks())
+                .anySatisfy(task -> {
+                    assertThat(task.getName()).isEqualTo("full-control-task");
+                    assertThat(task.getExecutionMode()).isEqualTo(ExecutionMode.FULL_CONTROL);
+                })
+                .anySatisfy(task -> {
+                    assertThat(task.getName()).isEqualTo("instrumented-task");
+                    assertThat(task.getExecutionMode()).isEqualTo(ExecutionMode.INSTRUMENTED);
+                })
+                .anySatisfy(task -> {
+                    assertThat(task.getName()).isEqualTo("retired-task");
+                    assertThat(task.getExecutionMode()).isNull();
+                });
+    }
+
+    /**
+     * Scenario: The execution mode is not an input
+     *   Given a create request whose task on the full-control executor "starter" sends executionMode INSTRUMENTED
+     *   When the client POSTs the activity and then GETs it
+     *   Then both responses show the task as FULL_CONTROL
+     * Traces to {@code spdd/prompt/BDMD-5518-202611031629-[Feat]-api-task-execution-mode.md}.
+     */
+    @Test
+    public void whenCreateActivityWithExecutionModeThenConfiguredModeReturned() {
+        // Given
+        ActivityRes payload = newActivity("dpv-execution-mode-input", "execution-mode-input");
+        TaskRes task = taskOn("full-control-task", "starter");
+        task.setExecutionMode(ExecutionMode.INSTRUMENTED);
+        payload.setTasks(List.of(task));
+
+        // When
+        ActivityRes created = createActivity(payload);
+        ResponseEntity<ActivityRes> response = rest.getForEntity(
+                apiUrl(RoutesV2.ACTIVITIES, "/" + created.getUuid()),
+                ActivityRes.class
+        );
+
+        // Then
+        assertThat(created.getTasks()).singleElement()
+                .satisfies(createdTask -> assertThat(createdTask.getExecutionMode()).isEqualTo(ExecutionMode.FULL_CONTROL));
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getTasks()).singleElement()
+                .satisfies(readTask -> assertThat(readTask.getExecutionMode()).isEqualTo(ExecutionMode.FULL_CONTROL));
+    }
+
     private ActivityRes createActivity(ActivityRes payload) {
         ResponseEntity<ActivityRes> response = rest.postForEntity(
                 apiUrl(RoutesV2.ACTIVITIES),
@@ -985,6 +1060,13 @@ public class ActivityControllerIT extends DevOpsApplicationIT {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).isNotNull();
         return response.getBody();
+    }
+
+    private static TaskRes taskOn(String name, String executorName) {
+        TaskRes task = new TaskRes();
+        task.setName(name);
+        task.setExecutorName(executorName);
+        return task;
     }
 
     private static ActivityRes newActivity(String dataProductVersionUuid, String name) {

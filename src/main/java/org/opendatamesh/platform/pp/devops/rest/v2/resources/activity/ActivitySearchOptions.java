@@ -8,9 +8,10 @@ public class ActivitySearchOptions {
 
     private String dataProductVersionUuid;
     private String dataProductFqn;
-    private String dataProductVersionTag;
+    private String dataProductVersionNumber;
     private String name;
     private Set<ExecutionStatus> statuses;
+    private String taskProviderRunId;
 
     public String getDataProductVersionUuid() {
         return dataProductVersionUuid;
@@ -28,12 +29,12 @@ public class ActivitySearchOptions {
         this.dataProductFqn = dataProductFqn;
     }
 
-    public String getDataProductVersionTag() {
-        return dataProductVersionTag;
+    public String getDataProductVersionNumber() {
+        return dataProductVersionNumber;
     }
 
-    public void setDataProductVersionTag(String dataProductVersionTag) {
-        this.dataProductVersionTag = dataProductVersionTag;
+    public void setDataProductVersionNumber(String dataProductVersionNumber) {
+        this.dataProductVersionNumber = dataProductVersionNumber;
     }
 
     public String getName() {
@@ -50,5 +51,13 @@ public class ActivitySearchOptions {
 
     public void setStatuses(Set<ExecutionStatus> statuses) {
         this.statuses = statuses;
+    }
+
+    public String getTaskProviderRunId() {
+        return taskProviderRunId;
+    }
+
+    public void setTaskProviderRunId(String taskProviderRunId) {
+        this.taskProviderRunId = taskProviderRunId;
     }
 }

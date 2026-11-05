@@ -129,7 +129,7 @@ class ActivityService {
 class ActivityRes {
     <<existing>>
     +uuid, dataProductVersionUuid
-    +dataProductFqn, dataProductVersionTag
+    +dataProductFqn, dataProductVersionNumber
     +name, sortOrder, status, startedAt, finishedAt, tasks
 }
 
@@ -186,7 +186,7 @@ The Policy wire types are local copies of the Policy V1 resources, as in the Reg
    - Error handling: no `GlobalExceptionHandler` change. A `ClientException` from Policy emits a rejection. A defect (missing activity, missing field) escapes the handler and `ObserverService` marks the notification failed (DD-6, DD-10).
 
 3. Business logic.
-   - Request mapping (DD-1, DD-2, DD-7, DD-8, DD-9): `ACTIVITY_EXECUTION_REQUESTED` becomes `ACTIVITY_EXECUTION_RESULT`, and `ACTIVITY_TASK_EXECUTION_REQUESTED` becomes `TASK_EXECUTION_RESULT`. `currentState` is omitted. `dataProductId` is the fqn-derived id. `dataProductVersion` is the version tag.
+   - Request mapping (DD-1, DD-2, DD-7, DD-8, DD-9): `ACTIVITY_EXECUTION_REQUESTED` becomes `ACTIVITY_EXECUTION_RESULT`, and `ACTIVITY_TASK_EXECUTION_REQUESTED` becomes `TASK_EXECUTION_RESULT`. `currentState` is omitted. `dataProductId` is the fqn-derived id. `dataProductVersion` is the version number.
    - Policy input (DD-2, DD-10): for an activity request, `{ activity, otherActivities }`, where `activity` is the event's activity unchanged and `otherActivities` is the other activities of the same data product version as summaries, sorted by `sortOrder` nulls last. For a task request, `{ activity, task }`, where `activity` has a `tasks` list added (all tasks of the activity with their results and without their logs, sorted by `sortOrder` nulls last) and `task` is the requested task as the event carries it.
    - Dates (DD-10): every date in the policy input is an ISO-8601 text with milliseconds and an offset, for example `2026-10-15T15:19:00.123+00:00`, written by the same Jackson configuration as the events.
    - Judgement (DD-6): a failed policy with `blockingFlag=true` rejects. An empty or null result list approves. A failed non-blocking policy approves. The aggregate `result` flag is ignored.
@@ -299,7 +299,7 @@ Package: `org.opendatamesh.platform.pp.devops.old.v1.policyservice`. The `old.v1
 2. Core Method: `handleEvent(NotificationDispatchEventRes event): void`.
    - Input Validation: convert the event with the package `ObjectMapper`. A null event content or null activity throws `BadRequestException` with the messages `Missing 'content' field in event` and `Missing 'activity' field in event content`.
    - Business Logic:
-     1. Build `PolicyResPolicyEvaluationRequest`: `event` = `ACTIVITY_EXECUTION_RESULT`, `resourceType` = `ACTIVITY_EXECUTION_RESULT`, `dataProductId` = `PolicyV1LegacyIdentifier.fromFqn(activity.dataProductFqn)`, `dataProductVersion` = `activity.dataProductVersionTag`, `currentState` = null, `afterState` = `inputEnricher.forActivityExecution(eventContent, activity uuid, activity dataProductVersionUuid)` (DD-2, DD-10).
+     1. Build `PolicyResPolicyEvaluationRequest`: `event` = `ACTIVITY_EXECUTION_RESULT`, `resourceType` = `ACTIVITY_EXECUTION_RESULT`, `dataProductId` = `PolicyV1LegacyIdentifier.fromFqn(activity.dataProductFqn)`, `dataProductVersion` = `activity.dataProductVersionNumber`, `currentState` = null, `afterState` = `inputEnricher.forActivityExecution(eventContent, activity uuid, activity dataProductVersionUuid)` (DD-2, DD-10).
      2. Call `policyClient.validateInput(request, true)`.
      3. If `PolicyV1Decision.hasBlockingFailure(response)` emit the rejected event, otherwise the approved event.
    - Exception Handling: catch `ClientException` around the Policy call only. Log a warning with the activity uuid and the code, and emit the rejected event (fail closed). Do not catch `RuntimeException`: an enrichment or mapping defect must surface as a failed notification (DD-6, DD-10).
@@ -387,7 +387,7 @@ Read from the registry `spdd/norms/README.md`. Applicable files: `spdd/norms/USE
    - The task request's `activity.tasks` lists all tasks of the activity, with their `results` (`uuid`, `content`, `generatedAt`), and without `logs`. Ordered by `sortOrder`, nulls last. The requested `task` is the event's task, unchanged (DD-9, DD-10).
    - Dates in the policy input are ISO-8601 text with milliseconds and an offset (for example `2026-10-15T15:19:00.123+00:00`). No epoch number is mixed in.
    - `currentState` is omitted (DD-2).
-   - `dataProductId` is the JDK name-based UUID of the fqn, and `dataProductVersion` is the version tag. The V2 uuid is not sent to Policy as a product id (DD-7).
+   - `dataProductId` is the JDK name-based UUID of the fqn, and `dataProductVersion` is the version number. The V2 uuid is not sent to Policy as a product id (DD-7).
    - Reject only a failed blocking policy. Empty results and non-blocking failures approve. A client failure rejects (DD-6).
 6. Exception Handling Constraints:
    - Only `ClientException` becomes a rejection. Any other exception propagates and fails the notification. A missing activity is such an exception (DD-10).
@@ -506,7 +506,7 @@ Feature: The Policy input carries the context a policy needs
     Then the startedAt and finishedAt of the other activity are ISO-8601 text with milliseconds and an offset
 
   Scenario: Policy request carries the legacy product identifiers
-    Given an activity on data product fqn "urn:org.opendatamesh:dataproducts:sample-product" and version tag "1.0.0"
+    Given an activity on data product fqn "urn:org.opendatamesh:dataproducts:sample-product" and version number "1.0.0"
     When DevOps receives an ACTIVITY_EXECUTION_REQUESTED event
     Then the Policy request dataProductId is "a72bbe0c-18c6-30b0-a03a-5392d6a770ea"
     And the Policy request dataProductVersion is "1.0.0"
@@ -561,7 +561,7 @@ Feature: Legacy identifier
 | Task request evaluated / rejected when Policy cannot be reached | `PolicyV1AdapterIT` | `whenTaskExecutionRequested_andPolicyUnreachable_thenRejectedEmitted` |
 | Policy input / activity afterState has activity and other activities | `PolicyV1AdapterIT` | `whenActivityExecutionRequested_thenAfterStateIsPolicyInputWithEventActivity` |
 | Policy input / task afterState has activity tasks and requested task | `PolicyV1AdapterIT` | `whenTaskExecutionRequested_thenAfterStateCarriesActivityTasksAndRequestedTaskUnchanged` |
-| Policy input / legacy product identifiers | `PolicyV1AdapterIT` | `whenActivityExecutionRequested_thenRequestCarriesLegacyIdAndVersionTag` |
+| Policy input / legacy product identifiers | `PolicyV1AdapterIT` | `whenActivityExecutionRequested_thenRequestCarriesLegacyIdAndVersionNumber` |
 | Policy input / other activities are same-version siblings only | `PolicyV1AdapterIT` | `whenActivityExecutionRequested_thenOtherActivitiesHoldSameVersionSiblingsOnly` |
 | Policy input / other activity summary has summary fields and ISO dates | `PolicyV1AdapterIT` | `whenActivityExecutionRequested_thenOtherActivitySummaryHasSummaryFieldsAndIsoDates` |
 | Policy input / other activities ordered by sortOrder, nulls last | `PolicyV1AdapterIT` | `whenActivityExecutionRequested_thenOtherActivitiesOrderedBySortOrderNullsLast` |

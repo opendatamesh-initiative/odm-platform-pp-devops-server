@@ -30,7 +30,7 @@ classDiagram
     +String uuid
     +String dataProductVersionUuid
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String name
     +Integer sortOrder
     +ExecutionStatus status
@@ -69,7 +69,7 @@ classDiagram
     +String uuid
     +String dataProductVersionUuid
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String name
     +Integer sortOrder
     +ExecutionStatus status
@@ -115,7 +115,7 @@ classDiagram
   class ActivitySearchOptions {
     +String dataProductVersionUuid
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String name
     +ExecutionStatus status
   }
@@ -137,7 +137,7 @@ classDiagram
 
 **Physical model** (Flyway; Hibernate schema `odm_devops`; **replace** `src/main/resources/db/migration/postgresql/V1__init_schema.sql` with this first schema). Plain `CREATE TABLE IF NOT EXISTS`:
 
-- `activities`: `uuid` PK `varchar(36)`, `data_product_version_uuid` `varchar(36)`, `data_product_fqn` `varchar(255)`, `data_product_version_tag` `varchar(255)`, `name` `varchar(255)`, `sort_order` `integer`, `status` `varchar(255)`, `started_at` timestamp, `finished_at` timestamp, `created_at` timestamp, `updated_at` timestamp. No business `NOT NULL`. Required fields are checked in `validate`.
+- `activities`: `uuid` PK `varchar(36)`, `data_product_version_uuid` `varchar(36)`, `data_product_fqn` `varchar(255)`, `data_product_version_number` `varchar(255)`, `name` `varchar(255)`, `sort_order` `integer`, `status` `varchar(255)`, `started_at` timestamp, `finished_at` timestamp, `created_at` timestamp, `updated_at` timestamp. No business `NOT NULL`. Required fields are checked in `validate`.
 - `activities_tasks`: `uuid` PK `varchar(36)`, `activity_uuid` `varchar(36)` references `activities(uuid)` **on delete cascade**, `name` `varchar(255)`, `description` text, `sort_order` `integer`, `status` `varchar(255)`, `provider_run_id` `varchar(255)`, `executor_name` `varchar(255)`, `executor_parameters` text, `pipeline_parameters` text, `started_at` timestamp, `finished_at` timestamp, `created_at`, `updated_at`. The last three business columns were added by BDMD-5437 in this same `V1`, before the first deployment.
 - `activities_tasks_logs`: `uuid` PK `varchar(36)`, `task_uuid` `varchar(36)` references `activities_tasks(uuid)` **on delete cascade**, `content` text, `generated_at` timestamp, `created_at`, `updated_at`.
 - `activities_tasks_results`: `uuid` PK `varchar(36)`, `task_uuid` `varchar(36)` references `activities_tasks(uuid)` **on delete cascade**, `content` text, `generated_at` timestamp, `created_at`, `updated_at`.
@@ -161,7 +161,7 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
    - Replace placeholder Flyway `V1` with the physical model above. Do not add `V2` for this schema. BDMD-5437 later added the task execution columns to this same `V1`, before the first deployment.
 
 3. Business logic:
-   - Required on the activity: `dataProductVersionUuid`, `name`. Optional: `dataProductFqn`, `dataProductVersionTag`, `sortOrder`, `startedAt`, `finishedAt`, and the task list.
+   - Required on the activity: `dataProductVersionUuid`, `name`. Optional: `dataProductFqn`, `dataProductVersionNumber`, `sortOrder`, `startedAt`, `finishedAt`, and the task list.
    - Omitted status on the activity or on a task becomes `PENDING`. Any value in `PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED` may be stored. Reject any other status. Do not check transitions. Do not set activity status from tasks.
    - Task `name`, `description`, `sortOrder`, `providerRunId`, timestamps, logs, and results are optional. A log or result object that is present requires `content`. `generatedAt` is stored as sent and is never copied from `createdAt`.
    - Several activities may share the same data-product version, name, and status. Several tasks may share a name, including a null `providerRunId`. Delete is allowed in every status.
@@ -213,7 +213,7 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
    - `uuid`: `String` — `@Id`, `@GeneratedValue(strategy = GenerationType.UUID)`, `@Column(name = "uuid", length = 36)`.
    - `dataProductVersionUuid`: `String` — `data_product_version_uuid`, length 36. No `nullable = false`.
    - `dataProductFqn`: `String` — `data_product_fqn`, length 255.
-   - `dataProductVersionTag`: `String` — `data_product_version_tag`, length 255.
+   - `dataProductVersionNumber`: `String` — `data_product_version_number`, length 255.
    - `name`: `String` — length 255. No `nullable = false`.
    - `sortOrder`: `Integer` — `sort_order`.
    - `status`: `ExecutionStatus` — `@Enumerated(EnumType.STRING)`, `status` `varchar(255)`. No `nullable = false`.
@@ -244,7 +244,7 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
 3. Static nested `Specs`, each returning null when the argument is null or blank (status: null when the enum is null), otherwise `cb.equal` on the attribute:
    - `hasDataProductVersionUuid(String)`
    - `hasDataProductFqn(String)`
-   - `hasDataProductVersionTag(String)`
+   - `hasDataProductVersionNumber(String)`
    - `hasName(String)`
    - `hasStatus(ExecutionStatus)`
 4. No task repository.
@@ -276,10 +276,10 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
 4. `getRepository()` returns the activities repository.
 5. `toRes` / `toEntity` delegate to the mapper. `toRes` is the graph mapping, used by create, get, and overwrite responses.
 6. `validate(Activity)`:
-   - Trim every string, including activity, task, log, and result `uuid`. Blank optional strings become null (`dataProductFqn`, `dataProductVersionTag`, task `name`, `description`, `providerRunId`, and any uuid that is blank after trim). Uuid trim runs before duplicate-uuid checks and before `beforeOverwrite` indexing so a whitespace-padded owned uuid still matches.
+   - Trim every string, including activity, task, log, and result `uuid`. Blank optional strings become null (`dataProductFqn`, `dataProductVersionNumber`, task `name`, `description`, `providerRunId`, and any uuid that is blank after trim). Uuid trim runs before duplicate-uuid checks and before `beforeOverwrite` indexing so a whitespace-padded owned uuid still matches.
    - `dataProductVersionUuid` required after trim, max 36. Message: `Data product version UUID is required` or `Data product version UUID cannot exceed 36 characters`.
    - `name` required, max 255. Message: `Name is required` / `Name cannot exceed 255 characters`.
-   - `dataProductFqn` and `dataProductVersionTag` max 255 when present. Messages: `Data product FQN cannot exceed 255 characters`, `Data product version tag cannot exceed 255 characters`.
+   - `dataProductFqn` and `dataProductVersionNumber` max 255 when present. Messages: `Data product FQN cannot exceed 255 characters`, `Data product version number cannot exceed 255 characters`.
    - Each task: `name` and `providerRunId` max 255; `description` max 10000. Messages: `Task name cannot exceed 255 characters`, `Provider run id cannot exceed 255 characters`, `Task description cannot exceed 10000 characters`.
    - A null element in `tasks`, `logs`, or `results` → `BadRequestException` `Task entry cannot be null` / `Log entry cannot be null` / `Result entry cannot be null`.
    - Log or result `content` required, max 1048576. Messages: `Log content is required`, `Result content is required`, `Log content cannot exceed 1048576 characters`, `Result content cannot exceed 1048576 characters`.
@@ -317,7 +317,7 @@ Do **not** create tables or entities for Pipeline, Pipeline Run, or a peer task 
 4. Methods, mirroring the product-plane root controller:
    - `POST` `createActivity(ActivityRes)` → `createResource`. 201. `@Hidden`.
    - `GET /{uuid}` `getActivity(String uuid)` → `findOneResource`. 200. Returns the nested graph.
-   - `GET` `searchActivities(ActivitySearchOptions, @PageableDefault(page = 0, size = 20, sort = "sortOrder", direction = Sort.Direction.ASC) Pageable)` → `findAllResourcesFiltered`. 200. Does not return tasks. Document sort properties: `uuid`, `dataProductVersionUuid`, `dataProductFqn`, `dataProductVersionTag`, `name`, `sortOrder`, `status`, `startedAt`, `finishedAt`, `createdAt`, `updatedAt`.
+   - `GET` `searchActivities(ActivitySearchOptions, @PageableDefault(page = 0, size = 20, sort = "sortOrder", direction = Sort.Direction.ASC) Pageable)` → `findAllResourcesFiltered`. 200. Does not return tasks. Document sort properties: `uuid`, `dataProductVersionUuid`, `dataProductFqn`, `dataProductVersionNumber`, `name`, `sortOrder`, `status`, `startedAt`, `finishedAt`, `createdAt`, `updatedAt`.
    - `PUT /{uuid}` `updateActivity(String uuid, ActivityRes)` → `overwriteResource`. 200. The body is the desired aggregate, including tasks. `@Hidden`.
    - `DELETE /{uuid}` `deleteActivity(String uuid)` → `delete`. 204. `@Hidden`.
 5. OpenAPI `@Operation`, `@ApiResponses`, and `@Parameter` on each method, same style as `DataProductController`. Document 400, 404, and 500 where they apply. PUT and POST describe that tasks omitted from the body are removed. `@Hidden` on POST, PUT, and DELETE so the public document shows GET and search only.
@@ -537,7 +537,7 @@ Feature: Activity is the only resource
    - Delete of an activity cascades tasks, logs, and results in every status.
 2. Performance constraints: search must not initialize tasks, logs, or results. Default page size is 20. Default sort is `sortOrder` ascending.
 3. Security constraints: no Registry call, no credential handling, no notification publish. Error bodies stay on `ErrorRes` and do not add stack traces.
-4. Integration constraints: no foreign key to Registry. `dataProductVersionUuid`, `dataProductFqn`, and `dataProductVersionTag` are local columns. The UI filters by `dataProductVersionUuid`.
+4. Integration constraints: no foreign key to Registry. `dataProductVersionUuid`, `dataProductFqn`, and `dataProductVersionNumber` are local columns. The UI filters by `dataProductVersionUuid`.
 5. Business-rule constraints, explicitly not enforced here:
    - Uniqueness of activities or of task `name` + `providerRunId`.
    - Delete only when the status is terminal.
@@ -547,4 +547,4 @@ Feature: Activity is the only resource
 6. Exception constraints: validation failures are `BadRequestException` with the messages in Operations. Unknown status JSON is 400. Unknown sort is 400. Unknown activity uuid is 404.
 7. Technical constraints: do not edit the generic CRUD base. Do not add Lombok. After the first deployment, do not edit Flyway `V1` again; later changes need a new version. BDMD-5437 added `executor_name`, `executor_parameters`, and `pipeline_parameters` to `activities_tasks` in `V1` before that deployment. Schema `odm_devops` comes from Hibernate configuration, not from a schema prefix in the SQL.
 8. Data constraints: `status` column `varchar(255)`. `sort_order` nullable integer with no gap check. `generated_at` nullable and never defaulted from `created_at`. Log and result content max 1048576. Task description max 10000. Other strings max 255, except `data_product_version_uuid` max 36.
-9. API constraints: JSON names are the Java bean names (`dataProductVersionUuid`, `dataProductFqn`, `dataProductVersionTag`, `sortOrder`, `providerRunId`, `generatedAt`, `startedAt`, `finishedAt`). Audit fields on the request are ignored. Response includes them.
+9. API constraints: JSON names are the Java bean names (`dataProductVersionUuid`, `dataProductFqn`, `dataProductVersionNumber`, `sortOrder`, `providerRunId`, `generatedAt`, `startedAt`, `finishedAt`). Audit fields on the request are ignored. Response includes them.

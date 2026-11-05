@@ -33,8 +33,8 @@ public class Activity extends VersionedEntity {
     @Column(name = "data_product_fqn", length = 255)
     private String dataProductFqn;
 
-    @Column(name = "data_product_version_tag", length = 255)
-    private String dataProductVersionTag;
+    @Column(name = "data_product_version_number", length = 255)
+    private String dataProductVersionNumber;
 
     @Column(name = "name", length = 255)
     private String name;
@@ -79,12 +79,12 @@ public class Activity extends VersionedEntity {
         this.dataProductFqn = dataProductFqn;
     }
 
-    public String getDataProductVersionTag() {
-        return dataProductVersionTag;
+    public String getDataProductVersionNumber() {
+        return dataProductVersionNumber;
     }
 
-    public void setDataProductVersionTag(String dataProductVersionTag) {
-        this.dataProductVersionTag = dataProductVersionTag;
+    public void setDataProductVersionNumber(String dataProductVersionNumber) {
+        this.dataProductVersionNumber = dataProductVersionNumber;
     }
 
     public String getName() {

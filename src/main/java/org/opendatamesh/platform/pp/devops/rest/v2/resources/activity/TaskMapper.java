@@ -17,7 +17,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.TaskResult;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", uses = TaskExecutionModeMapper.class)
 public interface TaskMapper {
 
     @Mapping(target = "activity", ignore = true)
@@ -28,6 +28,7 @@ public interface TaskMapper {
     Task toEntity(TaskRes res);
 
     @Mapping(target = "activityUuid", source = "activity.uuid")
+    @Mapping(target = "executionMode", source = "executorName", qualifiedByName = "executionMode")
     @Mapping(target = "executorParameters", source = "executorParameters", qualifiedByName = "jsonNodeToExecutorParameters")
     @Mapping(target = "pipelineParameters", source = "pipelineParameters", qualifiedByName = "stringToPipelineParameters")
     TaskRes toRes(Task entity);
@@ -36,6 +37,7 @@ public interface TaskMapper {
     @Mapping(target = "activityUuid", source = "activity.uuid")
     @Mapping(target = "logs", ignore = true)
     @Mapping(target = "results", ignore = true)
+    @Mapping(target = "executionMode", source = "executorName", qualifiedByName = "executionMode")
     @Mapping(target = "executorParameters", source = "executorParameters", qualifiedByName = "jsonNodeToExecutorParameters")
     @Mapping(target = "pipelineParameters", source = "pipelineParameters", qualifiedByName = "stringToPipelineParameters")
     TaskRes toResWithoutLogsAndResults(Task entity);
