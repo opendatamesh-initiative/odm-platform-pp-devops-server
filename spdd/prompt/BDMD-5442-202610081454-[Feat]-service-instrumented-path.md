@@ -17,7 +17,7 @@ classDiagram
     +String uuid
     +String dataProductVersionUuid
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String name
     +ExecutionStatus status
     +List~Task~ tasks
@@ -70,7 +70,7 @@ classDiagram
 
   class ActivityTaskExecutionRequestCommandRes {
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +String providerRunId
@@ -78,7 +78,7 @@ classDiagram
 
   class ActivityTaskLogsCommandRes {
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +List~TaskLogRes~ logs
@@ -87,7 +87,7 @@ classDiagram
   class ActivityTaskResultsCommandRes {
     +String activityUuid
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +List~TaskResultRes~ results
@@ -95,7 +95,7 @@ classDiagram
 
   class ActivityTaskStatusCommandRes {
     +String dataProductFqn
-    +String dataProductVersionTag
+    +String dataProductVersionNumber
     +String activityName
     +String taskName
     +ExecutionStatus status
@@ -137,11 +137,11 @@ No new table, column, status, or event type. `providerRunId`, logs, and results 
    - While any task is `RUNNING`, Advance Activity writes nothing. A full-control successor is requested only once no task is `RUNNING` and that successor is the first pending task and is full control. DevOps does not leave two instrumented tasks `RUNNING` together.
 
 3. CLI commands on the existing activity API:
-   - `POST /api/v2/pp/devops/activities/tasks/request-execution` — Request Task Execution. Body: data product FQN, version tag, activity name, task name, provider run id. No activity uuid. The call accepts the task only when it is the first `PENDING` task in sort order and no other task is `RUNNING`. It stores the id while the task is `PENDING`, emits the same `ACTIVITY_TASK_EXECUTION_REQUESTED` event Advance Activity emits, and returns the activity with the task still `PENDING`. It does not wait for approval.
+   - `POST /api/v2/pp/devops/activities/tasks/request-execution` — Request Task Execution. Body: data product FQN, version number, activity name, task name, provider run id. No activity uuid. The call accepts the task only when it is the first `PENDING` task in sort order and no other task is `RUNNING`. It stores the id while the task is `PENDING`, emits the same `ACTIVITY_TASK_EXECUTION_REQUESTED` event Advance Activity emits, and returns the activity with the task still `PENDING`. It does not wait for approval.
    - `POST /api/v2/pp/devops/activities/tasks/logs` — Record Task Logs. Same natural key and task name. Instrumented tasks only. Appends while the task is `RUNNING`.
    - `POST /api/v2/pp/devops/activities/tasks/results` — Record Task Results. Both modes. The body may carry an activity uuid or the natural key, plus the task name and results. An activity uuid that has text selects that activity and the natural key is ignored. Appends while the task is `RUNNING`.
    - `POST /api/v2/pp/devops/activities/tasks/status` — Record Task Status. Same natural key and task name. Instrumented tasks only. Accepts `SUCCEEDED`, `FAILED`, or `CANCELED` from `RUNNING`, then calls Advance Activity. The response is the activity after that advance.
-   - The CLI does not have the activity uuid. It addresses the activity by data product FQN, version tag, and activity name, and the task by name. The existing `GET /api/v2/pp/devops/activities/{uuid}` remains the poll for a caller that already has the uuid. No task-only read and no push to the CLI.
+   - The CLI does not have the activity uuid. It addresses the activity by data product FQN, version number, and activity name, and the task by name. The existing `GET /api/v2/pp/devops/activities/{uuid}` remains the poll for a caller that already has the uuid. No task-only read and no push to the CLI.
    - A repeated request for that same task, while it is still the first `PENDING` task and no other task is `RUNNING`, is accepted: the later provider run id replaces the stored one, and the event is emitted again. A later approval writes nothing once the task is `RUNNING`, which Execute Task already does when the task is no longer `PENDING`.
    - A repeated log or result while `RUNNING` inserts another row. A second terminal status fails because the task is no longer `RUNNING`.
 
@@ -174,7 +174,7 @@ No new table, column, status, or event type. `providerRunId`, logs, and results 
 4. Record Task Logs, Record Task Results, and Record Task Status call a persistence port and `TransactionalOutboundPort`. Record Task Status also calls an Advance Activity port after the status transaction commits. Record Task Logs and Record Task Status also call an executor-mode port.
 5. Advance Activity gains an executor-mode port used only on the request branch. Cancel Activity's executor port gains `findExecutionMode` beside `cancelRun`.
 6. Execute Activity's secrets port stores secrets for the executor names the use case passes. Those names are the full-control executors only.
-7. New persistence ports call `ActivityService.findOne`, `EntityInitAndDetachService.refresh`, and `ActivityService.overwrite`, matching `AdvanceActivityPersistenceOutboundPortImpl`. Request, logs, and status also resolve the open activity with `ActivityService.findAllFiltered` on data product FQN, version tag, activity name, and statuses `PENDING` and `RUNNING`, then `findOne` and refresh. Results do that only when the activity uuid is absent.
+7. New persistence ports call `ActivityService.findOne`, `EntityInitAndDetachService.refresh`, and `ActivityService.overwrite`, matching `AdvanceActivityPersistenceOutboundPortImpl`. Request, logs, and status also resolve the open activity with `ActivityService.findAllFiltered` on data product FQN, version number, activity name, and statuses `PENDING` and `RUNNING`, then `findOne` and refresh. Results do that only when the activity uuid is absent.
 
 ### Layered Architecture
 
@@ -226,11 +226,11 @@ No new table, column, status, or event type. `providerRunId`, logs, and results 
 ### 4. Implement Request Task Execution — `activity.services.usecases.requesttaskexecution`
 
 1. Responsibility: let the CLI ask for the next pending instrumented task by name, store the provider run id, and emit task execution requested. Policy enforces order for activities only. DevOps enforces task order.
-2. Command: `RequestTaskExecutionCommand(String dataProductFqn, String dataProductVersionTag, String activityName, String taskName, String providerRunId)`. No activity uuid.
+2. Command: `RequestTaskExecutionCommand(String dataProductFqn, String dataProductVersionNumber, String activityName, String taskName, String providerRunId)`. No activity uuid.
 3. Presenter: `presentTaskExecutionRequested(Activity activity)`.
-4. Ports: persistence (`findOpenActivity`, `save`), executor mode (`findExecutionMode`), notification (`emitTaskExecutionRequested`), `TransactionalOutboundPort`. `findOpenActivity` builds `ActivitySearchOptions` with data product FQN, version tag, activity name, and statuses `PENDING` and `RUNNING`, calls `activityService.findAllFiltered(Pageable.unpaged(), options)`, then `findOne` and `EntityInitAndDetachService.refresh`. No match: `NotFoundException` `No PENDING or RUNNING activity <activityName> for data product <fqn> version <tag>`. More than one: `BadRequestException` `More than one open activity <activityName> for data product <fqn> version <tag>`.
+4. Ports: persistence (`findOpenActivity`, `save`), executor mode (`findExecutionMode`), notification (`emitTaskExecutionRequested`), `TransactionalOutboundPort`. `findOpenActivity` builds `ActivitySearchOptions` with data product FQN, version number, activity name, and statuses `PENDING` and `RUNNING`, calls `activityService.findAllFiltered(Pageable.unpaged(), options)`, then `findOne` and `EntityInitAndDetachService.refresh`. No match: `NotFoundException` `No PENDING or RUNNING activity <activityName> for data product <fqn> version <versionNumber>`. More than one: `BadRequestException` `More than one open activity <activityName> for data product <fqn> version <versionNumber>`.
 5. `execute()`:
-   - Trim the five command strings. Blank data product FQN: `Data product FQN is required`. Blank version tag: `Data product version tag is required`. Blank activity name: `Activity name is required`. Blank task name: `Task name is required`. Blank provider run id: `Provider run id is required`.
+   - Trim the five command strings. Blank data product FQN: `Data product FQN is required`. Blank version number: `Data product version number is required`. Blank activity name: `Activity name is required`. Blank task name: `Task name is required`. Blank provider run id: `Provider run id is required`.
    - In one transaction: `findOpenActivity`. Activity status other than `RUNNING`: `Activity <uuid> is not RUNNING`.
    - Resolve the task by name. No match: `Task <name> not found in activity <uuid>`. More than one match: `Task <name> matches more than one task in activity <uuid>`.
    - If any task other than the named task is `RUNNING`, refuse. Names are in sort order, nulls last, the same comparator as Advance Activity. One other task: `Task <name> cannot be requested while task <other> is RUNNING`. Several: `Task <name> cannot be requested while tasks <a>, <b> are RUNNING`.
@@ -244,10 +244,10 @@ No new table, column, status, or event type. `providerRunId`, logs, and results 
 ### 5. Implement Record Task Logs — `activity.services.usecases.recordtasklogs`
 
 1. Responsibility: append log rows to one instrumented task while it is `RUNNING`.
-2. Command: `RecordTaskLogsCommand(String dataProductFqn, String dataProductVersionTag, String activityName, String taskName, List<TaskLog> logs)`. Entries carry `content` and `generatedAt` only. Uuids are null. No activity uuid.
+2. Command: `RecordTaskLogsCommand(String dataProductFqn, String dataProductVersionNumber, String activityName, String taskName, List<TaskLog> logs)`. Entries carry `content` and `generatedAt` only. Uuids are null. No activity uuid.
 3. Presenter: `presentTaskLogsRecorded(Activity activity)`.
 4. `execute()`:
-   - Blank data product FQN: `Data product FQN is required`. Blank version tag: `Data product version tag is required`. Blank activity name: `Activity name is required`. Blank task name: `Task name is required`. Null or empty list: `At least one task log is required`.
+   - Blank data product FQN: `Data product FQN is required`. Blank version number: `Data product version number is required`. Blank activity name: `Activity name is required`. Blank task name: `Task name is required`. Null or empty list: `At least one task log is required`.
    - Each content is trimmed. Blank content: `Task log content is required`. Null `generatedAt` becomes `new Timestamp(System.currentTimeMillis())`.
    - In one transaction: `findOpenActivity` with the same search, messages, and refresh as Request Task Execution, then resolve the task by name with the same two messages.
    - Mode other than `INSTRUMENTED`: `Task <name> is not instrumented`.
@@ -258,10 +258,10 @@ No new table, column, status, or event type. `providerRunId`, logs, and results 
 ### 6. Implement Record Task Results — `activity.services.usecases.recordtaskresults`
 
 1. Responsibility: append result rows to a running task of either mode.
-2. Command: `RecordTaskResultsCommand(String activityUuid, String dataProductFqn, String dataProductVersionTag, String activityName, String taskName, List<TaskResult> results)`. No provider run id.
+2. Command: `RecordTaskResultsCommand(String activityUuid, String dataProductFqn, String dataProductVersionNumber, String activityName, String taskName, List<TaskResult> results)`. No provider run id.
 3. Presenter: `presentTaskResultsRecorded(Activity activity)`.
 4. `execute()`:
-   - Trim the identity strings. If the activity uuid has text, load that activity with `findOne` and refresh, and ignore the natural key. If it does not, require the three natural-key fields with `Data product FQN is required`, `Data product version tag is required`, and `Activity name is required`, then `findOpenActivity` as Request Task Execution does. If neither the uuid nor any natural-key field is present: `Activity UUID or data product FQN, version tag, and activity name are required`.
+   - Trim the identity strings. If the activity uuid has text, load that activity with `findOne` and refresh, and ignore the natural key. If it does not, require the three natural-key fields with `Data product FQN is required`, `Data product version number is required`, and `Activity name is required`, then `findOpenActivity` as Request Task Execution does. If neither the uuid nor any natural-key field is present: `Activity UUID or data product FQN, version number, and activity name are required`.
    - Blank task name: `Task name is required`. Null or empty list: `At least one task result is required`. Blank content: `Task result content is required`.
    - Do not check execution mode. The `RUNNING` check uses `Task <name> is not RUNNING`. Name lookup uses the same two messages. Do not add an activity-status check that results did not already have.
 5. Constraints: refresh before append, inside the transaction, then overwrite. Do not call Advance Activity. A result for a task that Execute Task has already moved off `RUNNING` fails the `RUNNING` check and does not append.
@@ -269,11 +269,11 @@ No new table, column, status, or event type. `providerRunId`, logs, and results 
 ### 7. Implement Record Task Status — `activity.services.usecases.recordtaskstatus`
 
 1. Responsibility: record the last status of an instrumented task and then advance the activity.
-2. Command: `RecordTaskStatusCommand(String dataProductFqn, String dataProductVersionTag, String activityName, String taskName, ExecutionStatus status)`. No activity uuid.
+2. Command: `RecordTaskStatusCommand(String dataProductFqn, String dataProductVersionNumber, String activityName, String taskName, ExecutionStatus status)`. No activity uuid.
 3. Presenter: `presentTaskStatusRecorded(Activity activity)`.
 4. Ports: persistence, executor mode, `RecordTaskStatusAdvanceActivityOutboundPort.advanceActivity(String activityUuid)`, `TransactionalOutboundPort`.
 5. `execute()`:
-   - Blank data product FQN, version tag, activity name, or task name: the same required messages as Record Task Logs.
+   - Blank data product FQN, version number, activity name, or task name: the same required messages as Record Task Logs.
    - Status other than `SUCCEEDED`, `FAILED`, or `CANCELED`: `Task status must be SUCCEEDED, FAILED, or CANCELED`.
    - In one transaction: `findOpenActivity`, resolve by name, require `INSTRUMENTED` (`Task <name> is not instrumented`), require `RUNNING` (`Task <name> is not RUNNING`). Set status and `finishedAt` to now. Leave `providerRunId`, logs, and results on the reloaded graph. Save. The activity uuid used for Advance Activity is the uuid of that saved activity.
    - After that transaction commits, `advanceActivity`. Then load the activity again and present it.
@@ -302,23 +302,23 @@ No new table, column, status, or event type. `providerRunId`, logs, and results 
 
 1. Responsibility: HTTP adapter and DTO mapping for the four commands.
 2. Resources, under `rest.v2.resources.activity.usecases.task`, JavaBeans with `@Schema`:
-   - `ActivityTaskExecutionRequestCommandRes`: `dataProductFqn`, `dataProductVersionTag`, `activityName`, `taskName`, `providerRunId`.
-   - `ActivityTaskLogsCommandRes`: `dataProductFqn`, `dataProductVersionTag`, `activityName`, `taskName`, `logs` as `List<TaskLogRes>`.
-   - `ActivityTaskResultsCommandRes`: `activityUuid`, `dataProductFqn`, `dataProductVersionTag`, `activityName`, `taskName`, `results` as `List<TaskResultRes>`.
-   - `ActivityTaskStatusCommandRes`: `dataProductFqn`, `dataProductVersionTag`, `activityName`, `taskName`, `status`.
+   - `ActivityTaskExecutionRequestCommandRes`: `dataProductFqn`, `dataProductVersionNumber`, `activityName`, `taskName`, `providerRunId`.
+   - `ActivityTaskLogsCommandRes`: `dataProductFqn`, `dataProductVersionNumber`, `activityName`, `taskName`, `logs` as `List<TaskLogRes>`.
+   - `ActivityTaskResultsCommandRes`: `activityUuid`, `dataProductFqn`, `dataProductVersionNumber`, `activityName`, `taskName`, `results` as `List<TaskResultRes>`.
+   - `ActivityTaskStatusCommandRes`: `dataProductFqn`, `dataProductVersionNumber`, `activityName`, `taskName`, `status`.
    - `ActivityTaskCommandResultRes`: `activity` as `ActivityRes`.
 3. `ActivityUseCasesService`: one method per command. Do not call a required-activity-uuid check for these four. A null body is passed through and fails in the use case with the required-field messages, not a `NullPointerException`. Map logs and results to entities with null uuid. Use `ActivityMapper.toRes` for the presented activity. Inner result holders follow `ActivityCancelResultHolder`.
 4. `ActivityUseCaseController`, same class and base path:
    - `POST /tasks/request-execution`, `POST /tasks/logs`, `POST /tasks/results`, `POST /tasks/status`.
    - Status 200. Document 400, 404, 409, and 500 with `@Operation` and `@ApiResponses`. These endpoints are public, not `@Hidden`.
-   - Descriptions state that request, logs, and status address the activity by data product, version tag, and activity name; that results accept an activity uuid or that natural key; that logs and results are accepted only while the task is `RUNNING`; that status is the last write; and that request-execution does not start an executor and accepts only the next pending task while no other task is running.
+   - Descriptions state that request, logs, and status address the activity by data product, version number, and activity name; that results accept an activity uuid or that natural key; that logs and results are accepted only while the task is `RUNNING`; that status is the last write; and that request-execution does not start an executor and accepts only the next pending task while no other task is running.
    - The cancel description states that a running instrumented task is left running until the caller records a terminal status.
 5. `RoutesV2`: `ACTIVITIES_TASKS_REQUEST_EXECUTION`, `ACTIVITIES_TASKS_LOGS`, `ACTIVITIES_TASKS_RESULTS`, `ACTIVITIES_TASKS_STATUS` with those paths.
 6. Constraints: no secret headers on these four calls. No authorization check.
 
 ### 11. Documentation — `docs/`
 
-1. `docs/service/README.md`: describe the instrumented path beside full control. The CLI sends the activity and its tasks, polls the activity until it is `RUNNING` or `FAILED`, and addresses later calls by data product, version tag, and activity name. It requests an instrumented task only when that task is the next pending task and no other task is running, and it gives the provider run id. It polls that task name until `RUNNING` or `FAILED`, sends logs and results, then a terminal status. DevOps does not call an instrumented executor. One activity may contain both modes. Advance Activity requests a task only when it is full control. Cancel sets every pending task to canceled and, when a running task is instrumented, finishes after the CLI records a terminal status.
+1. `docs/service/README.md`: describe the instrumented path beside full control. The CLI sends the activity and its tasks, polls the activity until it is `RUNNING` or `FAILED`, and addresses later calls by data product, version number, and activity name. It requests an instrumented task only when that task is the next pending task and no other task is running, and it gives the provider run id. It polls that task name until `RUNNING` or `FAILED`, sends logs and results, then a terminal status. DevOps does not call an instrumented executor. One activity may contain both modes. Advance Activity requests a task only when it is full control. Cancel sets every pending task to canceled and, when a running task is instrumented, finishes after the CLI records a terminal status.
 2. `docs/setup/configuration.md`: remove the sentence that this service runs only full-control executors. State that `address` is required for `full-control` and optional for `instrumented`, and that DevOps does not call an instrumented address. Keep the `cli` example able to show `execution-mode: instrumented` with or without an address. The status poll applies to a full-control executor only. The sentence must not read as if DevOps polls an instrumented task.
 3. `docs/service/events.md`: state that `ACTIVITY_TASK_EXECUTION_REQUESTED` is emitted both by Advance Activity for a full-control task and by Request Task Execution for an instrumented task. No new event type.
 
@@ -588,12 +588,12 @@ Feature: Executor address
    - `Task <name> matches more than one task in activity <uuid>`
    - `Task <name> is not instrumented`
    - `Task <name> is not PENDING`
-   - `Data product FQN is required`, `Data product version tag is required`, `Activity name is required`, `Task name is required`, `Provider run id is required`
+   - `Data product FQN is required`, `Data product version number is required`, `Activity name is required`, `Task name is required`, `Provider run id is required`
    - `Task <name> cannot be requested while task <other> is RUNNING`
    - `Task <name> cannot be requested while tasks <a>, <b> are RUNNING`
    - `Task <name> is not the next task. Task <firstPendingName> is still PENDING`
-   - `No PENDING or RUNNING activity <activityName> for data product <fqn> version <tag>` is 404
-   - `More than one open activity <activityName> for data product <fqn> version <tag>` is 400
+   - `No PENDING or RUNNING activity <activityName> for data product <fqn> version <versionNumber>` is 404
+   - `More than one open activity <activityName> for data product <fqn> version <versionNumber>` is 400
 8. A second request for the same task, while it is still the first `PENDING` task and no other task is `RUNNING`, returns 200, replaces `providerRunId`, and emits again. A later pending task is refused while an earlier one is still `PENDING`.
 9. Execute Task on an instrumented approval sets `RUNNING`, keeps `providerRunId`, and returns. It does not call Advance Activity and does not open an executor client. A second approval writes nothing.
 10. Logs and status require an instrumented task. Otherwise 400 `Task <name> is not instrumented`. Results accept both modes.

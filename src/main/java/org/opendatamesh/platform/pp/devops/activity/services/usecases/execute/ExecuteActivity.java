@@ -92,9 +92,13 @@ class ExecuteActivity implements UseCase {
         }
         activity = command.activity();
         activity.setDataProductVersionUuid(trimToNull(activity.getDataProductVersionUuid()));
+        activity.setDataProductVersionNumber(trimToNull(activity.getDataProductVersionNumber()));
         activity.setName(trimToNull(activity.getName()));
         if (!StringUtils.hasText(activity.getDataProductVersionUuid())) {
             throw new BadRequestException("Data product version UUID is required");
+        }
+        if (!StringUtils.hasText(activity.getDataProductVersionNumber())) {
+            throw new BadRequestException("Data product version number is required");
         }
         if (!StringUtils.hasText(activity.getName())) {
             throw new BadRequestException("Name is required");

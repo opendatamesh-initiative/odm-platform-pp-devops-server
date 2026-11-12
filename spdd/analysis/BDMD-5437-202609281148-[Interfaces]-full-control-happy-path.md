@@ -273,7 +273,7 @@ The ref must match its repository. Using the main tag against an additional repo
 - **One provider-neutral `pipelineIdentifier`,** not one field per provider. The research proposed `githubWorkflowId`, `azurePipelineId`, and a Bitbucket selector. With a single string, DevOps stays unaware of providers (DD-29), and the field matches the single reserved descriptor key agreed at the review. Each executor already knows its provider.
 - **`repositoryKey`** is not needed to trigger. It is kept so the Policy service can check which repository of the data product a task targets.
 - **`GitRef.type`** is needed by Azure and Bitbucket. GitHub and GitLab ignore it.
-- **No commit SHA.** GitHub and GitLab do not trigger on a SHA, and the version tag is enough.
+- **No commit SHA.** GitHub and GitLab do not trigger on a SHA, and the Git tag is enough.
 
 ---
 
@@ -292,7 +292,7 @@ x-odm-github-executor-secret-token: <secret>          (optional, zero or more, D
   "activity": {
     "dataProductVersionUuid": "9b1e…",
     "dataProductFqn": "urn:dpds:acme:dataproducts:sales:1",
-    "dataProductVersionTag": "v1.2.0",
+    "dataProductVersionNumber": "1.2.0",
     "name": "prod",
     "sortOrder": 2,
     "tasks": [
@@ -462,7 +462,7 @@ interface ExecuteActivityNotificationOutboundPort {
   "type": "ACTIVITY_EXECUTION_REQUESTED",
   "eventTypeVersion": "V2.0.0",
   "eventContent": {
-    "activity": { "uuid": "…", "dataProductVersionUuid": "…", "dataProductFqn": "…", "dataProductVersionTag": "…",
+    "activity": { "uuid": "…", "dataProductVersionUuid": "…", "dataProductFqn": "…", "dataProductVersionNumber": "…",
                   "name": "prod", "sortOrder": 2, "status": "PENDING",
                   "tasks": [ { "uuid": "…", "name": "deploy-infrastructure", "sortOrder": 0, "status": "PENDING",
                                "executorName": "github", "executorParameters": {…}, "pipelineParameters": {…} } ] }

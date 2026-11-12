@@ -37,7 +37,7 @@ public class PolicyV1AdapterInactiveIT extends DevOpsApplicationIT {
         activity.put("uuid", "activity-1");
         activity.put("dataProductVersionUuid", "dpv-1");
         activity.put("dataProductFqn", "urn:org.opendatamesh:dataproducts:sample-product");
-        activity.put("dataProductVersionTag", "1.0.0");
+        activity.put("dataProductVersionNumber", "1.0.0");
         activity.put("name", "prod");
         activity.put("sortOrder", 3);
         activity.put("status", "PENDING");

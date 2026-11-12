@@ -99,7 +99,7 @@ Sources:
 
 ### Existing Concepts (from codebase)
 
-- **Activity (root aggregate, BDMD-5436):** one execution of a named activity on a data product version. It carries the DPV identity (UUID, FQN, tag), a name, an order, a status, and start and finish times. It owns Tasks. Re-executing an activity creates a new one.
+- **Activity (root aggregate, BDMD-5436):** one execution of a named activity on a data product version. It carries the DPV identity (UUID, FQN, version number), a name, an order, a status, and start and finish times. It owns Tasks. Re-executing an activity creates a new one.
 - **Task (nested in Activity):** a unit of work with a name, description, order, status, provider run id, and start and finish times. It owns Logs and Results. It has no execution data yet: no executor and no parameters.
 - **Logs / Results:** records owned by a Task, ordered by source time. Logs are read once, when the task ends.
 - **Execution status:** one closed set shared by Activity and Task. The BDMD-5436 constant `CANCELLED` is renamed to `CANCELED` (DD-13).
@@ -124,7 +124,7 @@ Sources:
 - **Executor registry:** the executors declared in configuration. Each has a name, an address, and an execution mode (DD-03, DD-04).
 - **Executor (outbound):** start a run and receive its provider run id, read the run status, and read the run logs. Reached over HTTP. The starter executor plays that role in this story (DD-05, DD-06).
 - **Task execution data** *(revised)*: the executor name plus two parameter groups, received with the activity (DD-10).
-  - **Executor parameters** (typed): what the executor needs to find and start the pipeline. That is the repository, the ref (the version tag), and the pipeline identifier.
+  - **Executor parameters** (typed): what the executor needs to find and start the pipeline. That is the repository, the ref (the release's Git tag), and the pipeline identifier.
   - **Pipeline parameters** (free key-value, user-defined): the arguments passed to the pipeline run. Their values may contain placeholders, which DevOps resolves just before the run starts (DD-21).
 - **Executor secrets** *(new)*: credentials the caller sends with the execute request. They are held in memory for the life of the activity and attached to that executor's calls. They are never stored in the database (DD-30).
 - **DevOps domain events:** the events of the event list, in the Registry envelope (DD-23, DD-24).
@@ -361,14 +361,14 @@ The process is a chain of atomic use cases, laid out like the Registry use-case 
 - **DD-10: Task execution data is an executor name and two parameter groups** *(revised, final review)*.
   - **Executor parameters (typed, renamed from trigger parameters):** everything the executor needs to find and start the pipeline.
     - The repository, shaped after the Registry's `DataProductRepoRes`.
-    - The ref: the data product version tag, from `DataProductVersionRes.tag`, or the additional tag for an additional repository.
+    - The ref: the release's Git tag, from `DataProductVersionRes.tag`, or the additional tag for an additional repository.
     - The pipeline identifier: a workflow file or id, a pipeline id, or a custom pipeline name, depending on the provider.
     - They are typed because they serve internal processes, and their shape is known. The type is fixed in DD-34, from the provider research (`agent-reports/devops-executor-parameters-research.md`).
     - The pipeline identifier comes from a reserved key in the descriptor, which the UI reads. Defining those reserved keys, and the builder and descriptor changes for multi-repository, are outside DevOps and outside this story.
   - **Pipeline parameters:** free key-value pairs, defined by the user for their pipeline. Values are strings and may contain placeholders (DD-21).
   - DevOps stores both groups as received. `executor_parameters` is `jsonb`, held on `Task` as a `JsonNode` with `@JdbcTypeCode(SqlTypes.JSON)`, the Registry and Blueprint shape (`DataProductVersion.content`, `BlueprintVersion.content`). `pipeline_parameters` is `text`, held as a `String`, the Notification `Event.eventContent` shape. `TaskMapper` converts each at the REST boundary. There is no `AttributeConverter`: loading a task does not rewrite the row. DevOps passes executor parameters unchanged, and pipeline parameters after resolving placeholders. Placeholder resolution parses a local copy and does not write the stored string back.
   - **Key contract (O2):** which pipeline parameter keys a pipeline expects is agreed between the pipeline author and the UI. How an executor reads the typed executor parameters is part of that executor's contract. Neither is defined in DevOps.
-  - **Source:** the UI takes the values from the data product version it already holds. That resource carries the descriptor content, the version tag, the additional Git tags per repository, and the parent data product (Registry `DataProductVersionRes`).
+  - **Source:** the UI takes the values from the data product version it already holds. That resource carries the descriptor content, the release's Git tag, the additional Git tags per repository, and the parent data product (Registry `DataProductVersionRes`).
   - **Multi-repository:** each task carries its own executor parameters, so tasks of one activity can target different repositories.
   - **Why pipeline parameters are plain strings:** git-provider pipeline inputs are string key-value pairs (for example workflow dispatch inputs and pipeline variables).
 - **DD-11: Execute refuses requests that cannot run.** It answers with a client error when:
@@ -457,7 +457,7 @@ The process is a chain of atomic use cases, laid out like the Registry use-case 
   - **Requested and completion events embed the resource.** The activity execution requested, activity succeeded, and activity failed events embed the activity resource. The task execution requested event also embeds the task being requested. That gives the Policy service the tasks and parameters it must check against the descriptor (DD-29). Secrets are never part of an event (DD-30).
   - **Approved events carry identifiers only**, as the Registry's auto-approve events do. The identifier block of the activity includes its `sortOrder` *(revised)*.
   - **The activity `sortOrder` is in every event's `eventContent.activity`** *(revised, final review)*.
-  - **The DPV appears by identity only** (UUID, FQN, tag, already part of the activity). The Policy service enriches it.
+  - **The DPV appears by identity only** (UUID, FQN, version number, already part of the activity). The Policy service enriches it.
   - Events do not carry the status of the DPV's other activities (DD-37).
   - **Pattern:** Registry `EmittedEventDataProductInitializationRequestedRes` and `EmittedEventDataProductInitializedRes` (embed `DataProductRes`), `EmittedEventDataProductInitializationApprovedRes` (identifiers only), and `docs/service/events.md`.
 - **DD-25: Auto-approval exactly as in the Registry.**

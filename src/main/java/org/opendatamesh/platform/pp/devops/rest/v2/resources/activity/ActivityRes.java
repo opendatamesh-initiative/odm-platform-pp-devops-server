@@ -19,8 +19,8 @@ public class ActivityRes extends VersionedRes {
     @Schema(description = "Data product fully qualified name")
     private String dataProductFqn;
 
-    @Schema(description = "Data product version tag")
-    private String dataProductVersionTag;
+    @Schema(description = "Data product version number: the descriptor's info.version (Registry V2 versionNumber), not the Git tag")
+    private String dataProductVersionNumber;
 
     @Schema(description = "Activity name")
     private String name;
@@ -64,12 +64,12 @@ public class ActivityRes extends VersionedRes {
         this.dataProductFqn = dataProductFqn;
     }
 
-    public String getDataProductVersionTag() {
-        return dataProductVersionTag;
+    public String getDataProductVersionNumber() {
+        return dataProductVersionNumber;
     }
 
-    public void setDataProductVersionTag(String dataProductVersionTag) {
-        this.dataProductVersionTag = dataProductVersionTag;
+    public void setDataProductVersionNumber(String dataProductVersionNumber) {
+        this.dataProductVersionNumber = dataProductVersionNumber;
     }
 
     public String getName() {

@@ -604,6 +604,7 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
     private static ActivityRes namedActivity(String dataProductVersionUuid, String name) {
         ActivityRes activity = new ActivityRes();
         activity.setDataProductVersionUuid(dataProductVersionUuid);
+        activity.setDataProductVersionNumber("1.0.0");
         activity.setName(name);
         activity.setSortOrder(1);
         return activity;

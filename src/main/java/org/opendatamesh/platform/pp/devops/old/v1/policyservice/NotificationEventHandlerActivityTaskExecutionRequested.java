@@ -78,7 +78,7 @@ class NotificationEventHandlerActivityTaskExecutionRequested implements Notifica
         request.setEvent(PolicyResPolicyEvaluationRequest.EventType.TASK_EXECUTION_RESULT);
         request.setResourceType(PolicyResPolicyEvaluationRequest.ResourceType.TASK_EXECUTION_RESULT);
         request.setDataProductId(PolicyV1LegacyIdentifier.fromFqn(activity.getDataProductFqn()));
-        request.setDataProductVersion(activity.getDataProductVersionTag());
+        request.setDataProductVersion(activity.getDataProductVersionNumber());
         request.setAfterState(inputEnricher.forTaskExecution(eventContent, activity.getUuid()));
         return request;
     }

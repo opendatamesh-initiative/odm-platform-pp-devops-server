@@ -7,6 +7,7 @@ import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivitySe
 import org.opendatamesh.platform.pp.devops.utils.services.EntityInitAndDetachService;
 import org.springframework.data.domain.Pageable;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
@@ -22,10 +23,10 @@ class RecordTaskStatusPersistenceOutboundPortImpl implements RecordTaskStatusPer
     }
 
     @Override
-    public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionTag, String activityName) {
+    public List<Activity> findOpenActivities(String dataProductFqn, String dataProductVersionNumber, String activityName) {
         ActivitySearchOptions options = new ActivitySearchOptions();
         options.setDataProductFqn(dataProductFqn);
-        options.setDataProductVersionTag(dataProductVersionTag);
+        options.setDataProductVersionNumber(dataProductVersionNumber);
         options.setName(activityName);
         options.setStatuses(EnumSet.of(ExecutionStatus.PENDING, ExecutionStatus.RUNNING));
         return activityService.findAllFiltered(Pageable.unpaged(), options).getContent();
@@ -41,6 +42,18 @@ class RecordTaskStatusPersistenceOutboundPortImpl implements RecordTaskStatusPer
         Activity activity = activityService.findOne(uuid);
         entityInitAndDetachService.refresh(activity);
         return activity;
+    }
+
+    @Override
+    public List<Activity> findActivitiesByTaskProviderRunId(String providerRunId) {
+        ActivitySearchOptions options = new ActivitySearchOptions();
+        options.setTaskProviderRunId(providerRunId);
+        options.setStatuses(EnumSet.of(ExecutionStatus.RUNNING));
+        List<Activity> loaded = new ArrayList<>();
+        for (Activity match : activityService.findAllFiltered(Pageable.unpaged(), options).getContent()) {
+            loaded.add(findForUpdate(match.getUuid()));
+        }
+        return loaded;
     }
 
     @Override

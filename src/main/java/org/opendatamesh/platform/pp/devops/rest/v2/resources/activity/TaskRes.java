@@ -2,6 +2,7 @@ package org.opendatamesh.platform.pp.devops.rest.v2.resources.activity;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
+import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.utils.resources.VersionedRes;
 
 import java.util.Date;
@@ -40,6 +41,11 @@ public class TaskRes extends VersionedRes {
 
     @Schema(description = "Name of the executor, as declared in DevOps configuration")
     private String executorName;
+
+    @Schema(description = "Execution mode of the task's executor, read from the current executor configuration. "
+            + "Read-only: ignored on input. Null when the executor is no longer declared.",
+            accessMode = Schema.AccessMode.READ_ONLY)
+    private ExecutionMode executionMode;
 
     @Schema(description = "What the executor needs to find and start the pipeline. Not secret: stored, returned, and sent in events.")
     private ExecutorParametersRes executorParameters;
@@ -131,6 +137,14 @@ public class TaskRes extends VersionedRes {
 
     public void setExecutorName(String executorName) {
         this.executorName = executorName;
+    }
+
+    public ExecutionMode getExecutionMode() {
+        return executionMode;
+    }
+
+    public void setExecutionMode(ExecutionMode executionMode) {
+        this.executionMode = executionMode;
     }
 
     public ExecutorParametersRes getExecutorParameters() {

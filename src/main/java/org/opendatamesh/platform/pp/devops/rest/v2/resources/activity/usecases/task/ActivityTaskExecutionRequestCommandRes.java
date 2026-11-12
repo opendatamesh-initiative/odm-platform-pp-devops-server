@@ -8,8 +8,8 @@ public class ActivityTaskExecutionRequestCommandRes {
     @Schema(description = "Fully qualified name of the data product")
     private String dataProductFqn;
 
-    @Schema(description = "Version tag of the data product")
-    private String dataProductVersionTag;
+    @Schema(description = "Version number of the data product (the descriptor's info.version)")
+    private String dataProductVersionNumber;
 
     @Schema(description = "Name of the open activity")
     private String activityName;
@@ -31,12 +31,12 @@ public class ActivityTaskExecutionRequestCommandRes {
         this.dataProductFqn = dataProductFqn;
     }
 
-    public String getDataProductVersionTag() {
-        return dataProductVersionTag;
+    public String getDataProductVersionNumber() {
+        return dataProductVersionNumber;
     }
 
-    public void setDataProductVersionTag(String dataProductVersionTag) {
-        this.dataProductVersionTag = dataProductVersionTag;
+    public void setDataProductVersionNumber(String dataProductVersionNumber) {
+        this.dataProductVersionNumber = dataProductVersionNumber;
     }
 
     public String getActivityName() {
