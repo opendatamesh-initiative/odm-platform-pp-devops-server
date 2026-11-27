@@ -11,6 +11,7 @@ import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTas
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorRunStatus;
@@ -28,6 +29,9 @@ import java.util.Optional;
 class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutboundPort {
 
     private static final Logger logger = LoggerFactory.getLogger(ExecuteTaskExecutorOutboundPortImpl.class);
+
+    /** Bounds an executor error body copied into the task logs. */
+    private static final int MAX_FAILURE_CHARS = 4000;
 
     private final ExecutorServicesProperties executorServicesProperties;
     private final ExecutorClientFactory executorClientFactory;
@@ -66,7 +70,8 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
     public ExecutorRunStatus readRunStatus(Task task) {
         ExecutorTaskStatusRes status = client(task).getTaskStatus(statusCommand(task));
         if (status == null || !StringUtils.hasText(status.getStatus())) {
-            logger.warn("Executor status is missing for task {}", task.getUuid());
+            logger.warn("Executor {} returned no status for task {} (run {})", task.getExecutorName(), task.getUuid(),
+                    task.getProviderRunId());
             return ExecutorRunStatus.FAILED;
         }
         return toRunStatus(status.getStatus(), task);
@@ -105,6 +110,25 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
             log.setGeneratedAt(new Timestamp(logs.getGeneratedAt().getTime()));
         }
         return Optional.of(log);
+    }
+
+    @Override
+    public String describeFailure(Task task, String action, RuntimeException failure) {
+        String executor = "Executor " + task.getExecutorName() + " failed to " + action;
+        if (failure instanceof ClientException clientFailure) {
+            String body = excerpt(clientFailure.getResponseBody());
+            return executor + " (HTTP " + clientFailure.getCode() + ")" + (body.isEmpty() ? "" : ": " + body);
+        }
+        String message = excerpt(failure.getMessage());
+        return executor + ": " + (message.isEmpty() ? failure.getClass().getSimpleName() : message);
+    }
+
+    private static String excerpt(String text) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        String trimmed = text.strip();
+        return trimmed.length() > MAX_FAILURE_CHARS ? trimmed.substring(0, MAX_FAILURE_CHARS) + "…" : trimmed;
     }
 
     private ExecutorRunStatus toRunStatus(String status, Task task) {

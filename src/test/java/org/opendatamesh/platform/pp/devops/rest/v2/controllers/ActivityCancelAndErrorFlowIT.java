@@ -305,6 +305,7 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      *   When the task execution runs
      *   Then the task is FAILED and the activity is FAILED
      *   And the task does not stay RUNNING
+     *   And the task logs say why the start failed
      */
     @Test
     public void whenStartThrowsThenActivityFailed() {
@@ -323,6 +324,40 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
         assertThat(stored.getTasks().get(0).getStatus()).isNotEqualTo(ExecutionStatus.RUNNING);
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
         assertThat(executor().statusReads()).isZero();
+        assertThat(stored.getTasks().get(0).getLogs()).singleElement()
+                .satisfies(log -> assertThat(log.getContent()).contains("failed to start the task: start failed"));
+    }
+
+    /**
+     * Feature: Executor failures
+     *
+     * Scenario: The executor refuses the start and its error message reaches the task logs
+     *   Given a task has been approved and the executor answers the start with HTTP 400 and an error message
+     *   When the task execution runs
+     *   Then the task is FAILED and the activity is FAILED
+     *   And the task logs hold the HTTP status and the executor's message
+     */
+    @Test
+    public void whenStartRefusedThenExecutorMessageInTaskLogs() {
+        // Given
+        stubExecutor(status("SUCCEEDED"), "log");
+        executor().startThrows(new ClientException(400, "Unknown environment prod: no environment profile is configured with this name"));
+        ActivityRes created = executeOneTask("dpv-start-refused", "prod");
+        // When
+        postActivityApproved(created.getUuid());
+
+        postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
+
+        ActivityRes stored = getActivity(created.getUuid());
+        // Then
+        TaskRes task = stored.getTasks().get(0);
+        assertThat(task.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(task.getLogs()).singleElement().satisfies(log -> {
+            assertThat(log.getContent()).contains("failed to start the task (HTTP 400)");
+            assertThat(log.getContent()).contains("Unknown environment prod: no environment profile is configured with this name");
+            assertThat(log.getGeneratedAt()).isNotNull();
+        });
     }
 
     /**
@@ -358,6 +393,7 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      *   Given the poll allows 3 status reads and every read is RUNNING
      *   When the task execution runs
      *   Then the task is FAILED and the activity is FAILED
+     *   And after the executor log, the task logs say the polling limit was reached
      */
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
@@ -379,6 +415,10 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
             ActivityRes stored = getActivity(created.getUuid());
             assertThat(stored.getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
             assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+            assertThat(stored.getTasks().get(0).getLogs()).extracting(log -> log.getContent())
+                    .satisfiesExactly(
+                            executorLog -> assertThat(executorLog).isEqualTo("log"),
+                            reason -> assertThat(reason).contains("still RUNNING after 3 status reads"));
         } finally {
             executorServicesProperties.setPollingInterval(previousInterval);
             executorServicesProperties.setSecretsTtl(previousTtl);

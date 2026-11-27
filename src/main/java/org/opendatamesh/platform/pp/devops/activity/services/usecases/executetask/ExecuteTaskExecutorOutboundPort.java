@@ -20,4 +20,10 @@ interface ExecuteTaskExecutorOutboundPort {
     int maxStatusReads();
 
     Optional<TaskLog> readRunLog(Task task);
+
+    /**
+     * A sentence for the user explaining why an executor call failed: the executor's error body when it answered,
+     * the transport error otherwise.
+     */
+    String describeFailure(Task task, String action, RuntimeException failure);
 }

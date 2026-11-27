@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -90,9 +91,12 @@ class ExecuteTask implements UseCase {
             return;
         }
         // This pipeline uploads its own task results before the executor reports a terminal status.
-        ExecutorRunStatus runStatus = followRunUntilItEnds(task);
-        Optional<TaskLog> log = readRunLogOrEmpty(task);
-        recordRunOutcome(task, runStatus, log);
+        RunOutcome outcome = followRunUntilItEnds(task);
+        List<TaskLog> logs = new ArrayList<>();
+        readRunLogOrEmpty(task).ifPresent(logs::add);
+        // A failure DevOps decided (unreadable status, poll limit) gets its reason in the task logs.
+        outcome.failureReason().ifPresent(reason -> logs.add(failureLog(reason)));
+        recordRunOutcome(task, outcome.status(), logs);
         presenter.presentTaskExecuted(task);
         advancePort.advanceActivity(task.getActivity().getUuid());
     }
@@ -131,35 +135,26 @@ class ExecuteTask implements UseCase {
         try {
             providerRunId = executorPort.startRun(task, resolved);
         } catch (RuntimeException startFailed) {
-            logger.warn("Executor start failed for task {}", task.getUuid(), startFailed);
-            failRunningTask(task);
+            String reason = executorPort.describeFailure(task, "start the task", startFailed);
+            logger.warn("Executor start failed for task {} of activity {}: {}",
+                    task.getUuid(), task.getActivity().getUuid(), reason, startFailed);
+            failRunningTask(task, reason);
             return false;
         }
         if (!StringUtils.hasText(providerRunId)) {
-            failRunningTask(task);
+            String reason = "Executor " + task.getExecutorName() + " returned no provider run id when starting the task";
+            logger.warn("{} (task {})", reason, task.getUuid());
+            failRunningTask(task, reason);
             return false;
         }
+        logger.info("Executor {} started task {} of activity {} with provider run id {}",
+                task.getExecutorName(), task.getUuid(), task.getActivity().getUuid(), providerRunId);
         recordProviderRunId(task, providerRunId);
         return true;
     }
 
-    private void failRunningTask(Task task) {
-        Timestamp finishedAt = now();
-        boolean failed = Boolean.TRUE.equals(transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findForUpdate(task.getActivity().getUuid());
-            Task persisted = findTask(activity, task.getUuid());
-            if (persisted.getStatus() != ExecutionStatus.RUNNING) {
-                return false;
-            }
-            persisted.setStatus(ExecutionStatus.FAILED);
-            persisted.setFinishedAt(finishedAt);
-            persistencePort.save(activity);
-            return true;
-        }, null));
-        if (failed) {
-            task.setStatus(ExecutionStatus.FAILED);
-            task.setFinishedAt(finishedAt);
-        }
+    private void failRunningTask(Task task, String reason) {
+        recordRunOutcome(task, ExecutorRunStatus.FAILED, List.of(failureLog(reason)));
         presenter.presentTaskExecuted(task);
         advancePort.advanceActivity(task.getActivity().getUuid());
     }
@@ -174,41 +169,54 @@ class ExecuteTask implements UseCase {
         task.setProviderRunId(providerRunId);
     }
 
-    private ExecutorRunStatus followRunUntilItEnds(Task task) {
+    private RunOutcome followRunUntilItEnds(Task task) {
         int max = executorPort.maxStatusReads();
+        String lastReadFailure = null;
         for (int attempt = 1; attempt <= max; attempt++) {
             ExecutorRunStatus status;
             try {
                 status = executorPort.readRunStatus(task);
             } catch (RuntimeException readFailed) {
-                logger.warn("Executor status read failed for task {} on attempt {}", task.getUuid(), attempt, readFailed);
+                lastReadFailure = executorPort.describeFailure(task, "read the run status", readFailed);
+                logger.warn("Executor status read failed for task {} (run {}) on attempt {} of {}: {}",
+                        task.getUuid(), task.getProviderRunId(), attempt, max, lastReadFailure, readFailed);
                 if (attempt == max) {
-                    return ExecutorRunStatus.FAILED;
+                    return RunOutcome.failed("The task is marked FAILED because the run status could not be read after "
+                            + max + " attempts. Last error: " + lastReadFailure);
                 }
                 executorPort.waitBeforeNextStatusRead();
                 continue;
             }
             if (status != ExecutorRunStatus.RUNNING) {
-                return status == null ? ExecutorRunStatus.FAILED : status;
+                logger.info("Executor {} reported run {} of task {} as {}",
+                        task.getExecutorName(), task.getProviderRunId(), task.getUuid(), status);
+                return status == null ? RunOutcome.failed("Executor " + task.getExecutorName() + " returned no run status")
+                        : RunOutcome.of(status);
             }
             if (attempt == max) {
-                return ExecutorRunStatus.FAILED;
+                logger.warn("Run {} of task {} still RUNNING after {} status reads: marking the task FAILED",
+                        task.getProviderRunId(), task.getUuid(), max);
+                return RunOutcome.failed("The task is marked FAILED because the run was still RUNNING after " + max
+                        + " status reads (the polling limit of the executor services). The run may still be going on in "
+                        + task.getExecutorName() + " under provider run id " + task.getProviderRunId() + ".");
             }
             executorPort.waitBeforeNextStatusRead();
         }
-        return ExecutorRunStatus.FAILED;
+        return RunOutcome.failed("The task is marked FAILED because no status read was allowed (polling limit is "
+                + max + ")" + (lastReadFailure == null ? "" : ". Last error: " + lastReadFailure));
     }
 
     private Optional<TaskLog> readRunLogOrEmpty(Task task) {
         try {
             return executorPort.readRunLog(task);
-        } catch (RuntimeException ignored) {
-            logger.warn("Executor log read failed for task {}", task.getUuid());
+        } catch (RuntimeException readFailed) {
+            logger.warn("Executor log read failed for task {} (run {}): {}", task.getUuid(), task.getProviderRunId(),
+                    executorPort.describeFailure(task, "read the run logs", readFailed), readFailed);
             return Optional.empty();
         }
     }
 
-    private void recordRunOutcome(Task task, ExecutorRunStatus runStatus, Optional<TaskLog> log) {
+    private void recordRunOutcome(Task task, ExecutorRunStatus runStatus, List<TaskLog> logs) {
         Timestamp finishedAt = now();
         ExecutionStatus status = toExecutionStatus(runStatus);
         boolean recorded = Boolean.TRUE.equals(transactionalPort.doInTransactionWithResults(ignored -> {
@@ -217,8 +225,7 @@ class ExecuteTask implements UseCase {
             if (persisted.getStatus() != ExecutionStatus.RUNNING) {
                 return false;
             }
-            if (log.isPresent()) {
-                TaskLog entry = log.get();
+            for (TaskLog entry : logs) {
                 entry.setTask(persisted);
                 if (persisted.getLogs() == null) {
                     persisted.setLogs(new ArrayList<>());
@@ -233,11 +240,30 @@ class ExecuteTask implements UseCase {
         if (!recorded) {
             return;
         }
-        if (log.isPresent()) {
-            rememberLog(task, log.get());
+        for (TaskLog entry : logs) {
+            rememberLog(task, entry);
         }
         task.setStatus(status);
         task.setFinishedAt(finishedAt);
+    }
+
+    private static TaskLog failureLog(String reason) {
+        TaskLog log = new TaskLog();
+        log.setContent(reason);
+        log.setGeneratedAt(now());
+        return log;
+    }
+
+    /** The terminal status of a run, with the reason when DevOps itself decided the failure. */
+    private record RunOutcome(ExecutorRunStatus status, Optional<String> failureReason) {
+
+        static RunOutcome of(ExecutorRunStatus status) {
+            return new RunOutcome(status, Optional.empty());
+        }
+
+        static RunOutcome failed(String reason) {
+            return new RunOutcome(ExecutorRunStatus.FAILED, Optional.of(reason));
+        }
     }
 
     private static ExecutionStatus toExecutionStatus(ExecutorRunStatus runStatus) {
