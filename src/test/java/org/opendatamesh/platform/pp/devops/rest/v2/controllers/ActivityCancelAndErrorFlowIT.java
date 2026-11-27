@@ -388,7 +388,7 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
         assertThat(task.getStatus()).isEqualTo(ExecutionStatus.FAILED);
         assertThat(task.getLogs()).singleElement().satisfies(log -> {
             assertThat(log.getContent()).startsWith("Could not reach executor");
-            assertThat(log.getContent()).contains("(no HTTP response): I/O error on POST request: Connection refused");
+            assertThat(log.getContent()).contains("(I/O error on POST request: Connection refused)");
             assertThat(log.getContent()).doesNotContain("HTTP 500");
         });
     }
@@ -420,6 +420,34 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
                 .satisfiesExactly(
                         executorLog -> assertThat(executorLog).isEqualTo("executor log"),
                         reason -> assertThat(reason).contains("returned the unknown status 'ERROR'"));
+    }
+
+    /**
+     * Feature: Executor failures
+     *
+     * Scenario: An empty run status fails the task with the reason in the task logs
+     *   Given the executor answers the status read with no status
+     *   When the task execution runs
+     *   Then the task is FAILED
+     *   And after the executor log, the task logs say the executor returned no status
+     */
+    @Test
+    public void whenStatusEmptyThenReasonInTaskLogs() {
+        // Given
+        stubExecutor(new ExecutorTaskStatusRes(), "executor log");
+        ActivityRes created = executeOneTask("dpv-status-empty", "prod");
+        // When
+        postActivityApproved(created.getUuid());
+
+        postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
+
+        ActivityRes stored = getActivity(created.getUuid());
+        // Then
+        assertThat(stored.getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(stored.getTasks().get(0).getLogs()).extracting(log -> log.getContent())
+                .satisfiesExactly(
+                        executorLog -> assertThat(executorLog).isEqualTo("executor log"),
+                        reason -> assertThat(reason).contains("returned no status for run"));
     }
 
     /**

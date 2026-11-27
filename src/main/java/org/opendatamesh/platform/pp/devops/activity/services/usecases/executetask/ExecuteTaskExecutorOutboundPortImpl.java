@@ -119,8 +119,13 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
         String executor = "Executor " + task.getExecutorName() + " failed to " + action;
         if (failure instanceof ClientTransportException transportFailure) {
             String message = excerpt(transportFailure.getResponseBody());
-            return "Could not reach executor " + task.getExecutorName() + " to " + action + " (no HTTP response)"
-                    + (message.isEmpty() ? "" : ": " + message);
+            String detail = message.isEmpty() ? "" : " (" + message + ")";
+            if (isResponseTimeout(transportFailure)) {
+                return "Executor " + task.getExecutorName() + " did not answer in time when asked to " + action + detail
+                        + ". The request reached the executor, which may still be acting on it: a run started this way "
+                        + "is not tracked by DevOps.";
+            }
+            return "Could not reach executor " + task.getExecutorName() + " to " + action + detail + ".";
         }
         if (failure instanceof ClientException clientFailure) {
             String body = excerpt(clientFailure.getResponseBody());
@@ -128,6 +133,26 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
         }
         String message = excerpt(failure.getMessage());
         return executor + ": " + (message.isEmpty() ? failure.getClass().getSimpleName() : message);
+    }
+
+    /** A read timeout: the connection was made and the request sent, but no answer came back. */
+    private static boolean isResponseTimeout(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.net.http.HttpConnectTimeoutException) {
+                return false;
+            }
+            if (cause instanceof java.net.http.HttpTimeoutException) {
+                return true;
+            }
+            if (cause instanceof java.net.SocketTimeoutException
+                    && cause.getMessage() != null && cause.getMessage().toLowerCase(Locale.ROOT).contains("read")) {
+                return true;
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+        }
+        return false;
     }
 
     private static String excerpt(String text) {

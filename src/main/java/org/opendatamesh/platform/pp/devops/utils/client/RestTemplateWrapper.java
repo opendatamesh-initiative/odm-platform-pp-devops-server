@@ -5,9 +5,11 @@ import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportExce
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpEntity;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpMethod;
 import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.UnknownContentTypeException;
 
 import java.net.URI;
 import java.util.Map;
@@ -45,10 +47,8 @@ class RestTemplateWrapper implements RestUtilsTemplate {
                     responseType,
                     uriVariables
             ).getBody();
-        } catch (RestClientResponseException e) {
-            throw new ClientException(e.getRawStatusCode(), e.getResponseBodyAsString());
         } catch (RestClientException e) {
-            throw new ClientTransportException(e.getMessage(), e);
+            throw translate(e);
         }
     }
 
@@ -67,10 +67,8 @@ class RestTemplateWrapper implements RestUtilsTemplate {
                     responseType,
                     uriVariables
             ).getBody();
-        } catch (RestClientResponseException e) {
-            throw new ClientException(e.getRawStatusCode(), e.getResponseBodyAsString());
         } catch (RestClientException e) {
-            throw new ClientTransportException(e.getMessage(), e);
+            throw translate(e);
         }
     }
 
@@ -84,12 +82,27 @@ class RestTemplateWrapper implements RestUtilsTemplate {
                     new org.springframework.http.HttpEntity<>(requestEntity.getBody(), headers),
                     responseType
             ).getBody();
-        } catch (RestClientResponseException e) {
-            throw new ClientException(e.getRawStatusCode(), e.getResponseBodyAsString());
         } catch (RestClientException e) {
-            throw new ClientTransportException(e.getMessage(), e);
+            throw translate(e);
         }
     }
 
 
+    /**
+     * An HTTP answer keeps its status and body, even when its content cannot be read. Only an I/O failure (connection
+     * refused, timeout, unknown host) means there was no answer: {@link ClientTransportException}.
+     */
+    private static ClientException translate(RestClientException e) {
+        if (e instanceof RestClientResponseException response) {
+            return new ClientException(response.getStatusCode().value(), response.getResponseBodyAsString());
+        }
+        if (e instanceof UnknownContentTypeException unreadable) {
+            return new ClientException(unreadable.getStatusCode().value(),
+                    "Unreadable response (" + unreadable.getContentType() + "): " + unreadable.getResponseBodyAsString());
+        }
+        if (e instanceof ResourceAccessException) {
+            return new ClientTransportException(e.getMessage(), e);
+        }
+        return new ClientException(500, e.getMessage());
+    }
 }
