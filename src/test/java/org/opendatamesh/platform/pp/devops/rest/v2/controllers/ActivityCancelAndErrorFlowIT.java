@@ -10,6 +10,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.GitRefType;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
 import org.opendatamesh.platform.pp.devops.rest.v2.ActivityHistoryFixture;
 import org.opendatamesh.platform.pp.devops.rest.v2.DevOpsApplicationIT;
@@ -305,6 +306,7 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      *   When the task execution runs
      *   Then the task is FAILED and the activity is FAILED
      *   And the task does not stay RUNNING
+     *   And the task logs say why the start failed
      */
     @Test
     public void whenStartThrowsThenActivityFailed() {
@@ -323,6 +325,129 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
         assertThat(stored.getTasks().get(0).getStatus()).isNotEqualTo(ExecutionStatus.RUNNING);
         assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
         assertThat(executor().statusReads()).isZero();
+        assertThat(stored.getTasks().get(0).getLogs()).singleElement()
+                .satisfies(log -> assertThat(log.getContent()).contains("failed to start the task: start failed"));
+    }
+
+    /**
+     * Feature: Executor failures
+     *
+     * Scenario: The executor refuses the start and its error message reaches the task logs
+     *   Given a task has been approved and the executor answers the start with HTTP 400 and an error message
+     *   When the task execution runs
+     *   Then the task is FAILED and the activity is FAILED
+     *   And the task logs hold the HTTP status and the executor's message
+     */
+    @Test
+    public void whenStartRefusedThenExecutorMessageInTaskLogs() {
+        // Given
+        stubExecutor(status("SUCCEEDED"), "log");
+        executor().startThrows(new ClientException(400, "Unknown environment prod: no environment profile is configured with this name"));
+        ActivityRes created = executeOneTask("dpv-start-refused", "prod");
+        // When
+        postActivityApproved(created.getUuid());
+
+        postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
+
+        ActivityRes stored = getActivity(created.getUuid());
+        // Then
+        TaskRes task = stored.getTasks().get(0);
+        assertThat(task.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(task.getLogs()).singleElement().satisfies(log -> {
+            assertThat(log.getContent()).contains("failed to start the task (HTTP 400)");
+            assertThat(log.getContent()).contains("Unknown environment prod: no environment profile is configured with this name");
+            assertThat(log.getGeneratedAt()).isNotNull();
+        });
+    }
+
+    /**
+     * Feature: Executor failures
+     *
+     * Scenario: An unreachable executor is reported as such, not as an HTTP error
+     *   Given a task has been approved and the executor start call gets no HTTP response
+     *   When the task execution runs
+     *   Then the task is FAILED
+     *   And the task logs say the executor could not be reached, with the transport error and no HTTP status
+     */
+    @Test
+    public void whenExecutorUnreachableThenTaskLogsSayNoResponse() {
+        // Given
+        stubExecutor(status("SUCCEEDED"), "log");
+        executor().startThrows(new ClientTransportException("I/O error on POST request: Connection refused",
+                new RuntimeException("Connection refused")));
+        ActivityRes created = executeOneTask("dpv-start-unreachable", "prod");
+        // When
+        postActivityApproved(created.getUuid());
+
+        postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
+
+        ActivityRes stored = getActivity(created.getUuid());
+        // Then
+        TaskRes task = stored.getTasks().get(0);
+        assertThat(task.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(task.getLogs()).singleElement().satisfies(log -> {
+            assertThat(log.getContent()).startsWith("Could not reach executor");
+            assertThat(log.getContent()).contains("(I/O error on POST request: Connection refused)");
+            assertThat(log.getContent()).doesNotContain("HTTP 500");
+        });
+    }
+
+    /**
+     * Feature: Executor failures
+     *
+     * Scenario: An unknown run status fails the task with the reason in the task logs
+     *   Given the executor reports the run with the status ERROR, which DevOps does not know
+     *   When the task execution runs
+     *   Then the task is FAILED and the activity is FAILED
+     *   And after the executor log, the task logs name the unknown status
+     */
+    @Test
+    public void whenStatusUnknownThenReasonInTaskLogs() {
+        // Given
+        stubExecutor(status("ERROR"), "executor log");
+        ActivityRes created = executeOneTask("dpv-status-unknown", "prod");
+        // When
+        postActivityApproved(created.getUuid());
+
+        postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
+
+        ActivityRes stored = getActivity(created.getUuid());
+        // Then
+        assertThat(stored.getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(stored.getTasks().get(0).getLogs()).extracting(log -> log.getContent())
+                .satisfiesExactly(
+                        executorLog -> assertThat(executorLog).isEqualTo("executor log"),
+                        reason -> assertThat(reason).contains("returned the unknown status 'ERROR'"));
+    }
+
+    /**
+     * Feature: Executor failures
+     *
+     * Scenario: An empty run status fails the task with the reason in the task logs
+     *   Given the executor answers the status read with no status
+     *   When the task execution runs
+     *   Then the task is FAILED
+     *   And after the executor log, the task logs say the executor returned no status
+     */
+    @Test
+    public void whenStatusEmptyThenReasonInTaskLogs() {
+        // Given
+        stubExecutor(new ExecutorTaskStatusRes(), "executor log");
+        ActivityRes created = executeOneTask("dpv-status-empty", "prod");
+        // When
+        postActivityApproved(created.getUuid());
+
+        postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
+
+        ActivityRes stored = getActivity(created.getUuid());
+        // Then
+        assertThat(stored.getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(stored.getTasks().get(0).getLogs()).extracting(log -> log.getContent())
+                .satisfiesExactly(
+                        executorLog -> assertThat(executorLog).isEqualTo("executor log"),
+                        reason -> assertThat(reason).contains("returned no status for run"));
     }
 
     /**
@@ -358,6 +483,7 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
      *   Given the poll allows 3 status reads and every read is RUNNING
      *   When the task execution runs
      *   Then the task is FAILED and the activity is FAILED
+     *   And after the executor log, the task logs say the polling limit was reached
      */
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
@@ -379,6 +505,10 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
             ActivityRes stored = getActivity(created.getUuid());
             assertThat(stored.getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
             assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+            assertThat(stored.getTasks().get(0).getLogs()).extracting(log -> log.getContent())
+                    .satisfiesExactly(
+                            executorLog -> assertThat(executorLog).isEqualTo("log"),
+                            reason -> assertThat(reason).contains("still RUNNING after 3 status reads"));
         } finally {
             executorServicesProperties.setPollingInterval(previousInterval);
             executorServicesProperties.setSecretsTtl(previousTtl);

@@ -284,6 +284,8 @@ DevOps checks only what every tool needs. Requirements specific to one tool (for
 - a run stopped because DevOps asked the executor to stop it, or canceled directly in the tool, is reported as *canceled*;
 - any other unsuccessful ending (timed out, skipped, and so on) is reported as *failed*.
 
+A status outside these four (running, succeeded, failed, canceled) is a fault of the executor: DevOps fails the task at once and names the status in the task logs.
+
 **Credentials (secrets).** Most tools need credentials, such as an API token. In full control:
 
 - the person or system that requests the execution supplies the credentials, one set per executor;
@@ -389,10 +391,14 @@ The owner can stop an activity that is still waiting or running. DevOps stops wh
 
 **Technical failures.**
 
+When DevOps fails a task for one of these reasons, it writes the reason in the task logs: the executor's error message with its HTTP status, or that the executor could not be reached or did not answer in time.
+
 | What goes wrong | Result |
 |---|---|
 | The executor cannot start the pipeline | The task fails, and so does the activity |
+| The executor does not answer the start in time | The task fails; the pipeline may have started in the tool and is not tracked |
 | DevOps cannot get the status of a running pipeline | The task fails after the last attempt |
+| The executor returns no status, or an unknown one | The task fails at once |
 | A pipeline is still running when DevOps stops checking | The task fails |
 | An instrumented pipeline reports failed or canceled | The activity fails or is canceled |
 
