@@ -1,6 +1,7 @@
 package org.opendatamesh.platform.pp.devops.utils.client;
 
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpEntity;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpMethod;
 import org.springframework.util.LinkedMultiValueMap;
@@ -47,7 +48,7 @@ class RestTemplateWrapper implements RestUtilsTemplate {
         } catch (RestClientResponseException e) {
             throw new ClientException(e.getRawStatusCode(), e.getResponseBodyAsString());
         } catch (RestClientException e) {
-            throw new ClientException(500, e.getMessage());
+            throw new ClientTransportException(e.getMessage(), e);
         }
     }
 
@@ -69,7 +70,7 @@ class RestTemplateWrapper implements RestUtilsTemplate {
         } catch (RestClientResponseException e) {
             throw new ClientException(e.getRawStatusCode(), e.getResponseBodyAsString());
         } catch (RestClientException e) {
-            throw new ClientException(500, e.getMessage());
+            throw new ClientTransportException(e.getMessage(), e);
         }
     }
 
@@ -86,7 +87,7 @@ class RestTemplateWrapper implements RestUtilsTemplate {
         } catch (RestClientResponseException e) {
             throw new ClientException(e.getRawStatusCode(), e.getResponseBodyAsString());
         } catch (RestClientException e) {
-            throw new ClientException(500, e.getMessage());
+            throw new ClientTransportException(e.getMessage(), e);
         }
     }
 

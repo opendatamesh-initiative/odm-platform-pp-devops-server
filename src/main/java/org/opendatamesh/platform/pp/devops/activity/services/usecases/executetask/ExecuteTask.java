@@ -173,9 +173,9 @@ class ExecuteTask implements UseCase {
         int max = executorPort.maxStatusReads();
         String lastReadFailure = null;
         for (int attempt = 1; attempt <= max; attempt++) {
-            ExecutorRunStatus status;
+            ExecuteTaskExecutorOutboundPort.StatusRead read;
             try {
-                status = executorPort.readRunStatus(task);
+                read = executorPort.readRunStatus(task);
             } catch (RuntimeException readFailed) {
                 lastReadFailure = executorPort.describeFailure(task, "read the run status", readFailed);
                 logger.warn("Executor status read failed for task {} (run {}) on attempt {} of {}: {}",
@@ -187,11 +187,18 @@ class ExecuteTask implements UseCase {
                 executorPort.waitBeforeNextStatusRead();
                 continue;
             }
+            if (read == null || read.status() == null) {
+                return RunOutcome.failed("The task is marked FAILED because executor " + task.getExecutorName()
+                        + " returned no run status.");
+            }
+            if (read.failureReason() != null) {
+                return RunOutcome.failed(read.failureReason());
+            }
+            ExecutorRunStatus status = read.status();
             if (status != ExecutorRunStatus.RUNNING) {
                 logger.info("Executor {} reported run {} of task {} as {}",
                         task.getExecutorName(), task.getProviderRunId(), task.getUuid(), status);
-                return status == null ? RunOutcome.failed("Executor " + task.getExecutorName() + " returned no run status")
-                        : RunOutcome.of(status);
+                return RunOutcome.of(status);
             }
             if (attempt == max) {
                 logger.warn("Run {} of task {} still RUNNING after {} status reads: marking the task FAILED",

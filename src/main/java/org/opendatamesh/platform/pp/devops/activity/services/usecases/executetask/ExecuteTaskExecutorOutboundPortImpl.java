@@ -12,6 +12,7 @@ import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTas
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
 import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorRunStatus;
@@ -67,12 +68,13 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
     }
 
     @Override
-    public ExecutorRunStatus readRunStatus(Task task) {
+    public StatusRead readRunStatus(Task task) {
         ExecutorTaskStatusRes status = client(task).getTaskStatus(statusCommand(task));
         if (status == null || !StringUtils.hasText(status.getStatus())) {
             logger.warn("Executor {} returned no status for task {} (run {})", task.getExecutorName(), task.getUuid(),
                     task.getProviderRunId());
-            return ExecutorRunStatus.FAILED;
+            return StatusRead.unusable("The task is marked FAILED because executor " + task.getExecutorName()
+                    + " returned no status for run " + task.getProviderRunId() + ".");
         }
         return toRunStatus(status.getStatus(), task);
     }
@@ -115,6 +117,11 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
     @Override
     public String describeFailure(Task task, String action, RuntimeException failure) {
         String executor = "Executor " + task.getExecutorName() + " failed to " + action;
+        if (failure instanceof ClientTransportException transportFailure) {
+            String message = excerpt(transportFailure.getResponseBody());
+            return "Could not reach executor " + task.getExecutorName() + " to " + action + " (no HTTP response)"
+                    + (message.isEmpty() ? "" : ": " + message);
+        }
         if (failure instanceof ClientException clientFailure) {
             String body = excerpt(clientFailure.getResponseBody());
             return executor + " (HTTP " + clientFailure.getCode() + ")" + (body.isEmpty() ? "" : ": " + body);
@@ -131,12 +138,14 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
         return trimmed.length() > MAX_FAILURE_CHARS ? trimmed.substring(0, MAX_FAILURE_CHARS) + "…" : trimmed;
     }
 
-    private ExecutorRunStatus toRunStatus(String status, Task task) {
+    private StatusRead toRunStatus(String status, Task task) {
         try {
-            return ExecutorRunStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+            return StatusRead.of(ExecutorRunStatus.valueOf(status.trim().toUpperCase(Locale.ROOT)));
         } catch (IllegalArgumentException unknown) {
             logger.warn("Executor status {} is not a known run status for task {}", status, task.getUuid());
-            return ExecutorRunStatus.FAILED;
+            return StatusRead.unusable("The task is marked FAILED because executor " + task.getExecutorName()
+                    + " returned the unknown status '" + excerpt(status) + "' for run " + task.getProviderRunId()
+                    + " (expected RUNNING, SUCCEEDED, FAILED or CANCELED).");
         }
     }
 

@@ -10,6 +10,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.GitRefType;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
 import org.opendatamesh.platform.pp.devops.rest.v2.ActivityHistoryFixture;
 import org.opendatamesh.platform.pp.devops.rest.v2.DevOpsApplicationIT;
@@ -358,6 +359,67 @@ public class ActivityCancelAndErrorFlowIT extends DevOpsApplicationIT {
             assertThat(log.getContent()).contains("Unknown environment prod: no environment profile is configured with this name");
             assertThat(log.getGeneratedAt()).isNotNull();
         });
+    }
+
+    /**
+     * Feature: Executor failures
+     *
+     * Scenario: An unreachable executor is reported as such, not as an HTTP error
+     *   Given a task has been approved and the executor start call gets no HTTP response
+     *   When the task execution runs
+     *   Then the task is FAILED
+     *   And the task logs say the executor could not be reached, with the transport error and no HTTP status
+     */
+    @Test
+    public void whenExecutorUnreachableThenTaskLogsSayNoResponse() {
+        // Given
+        stubExecutor(status("SUCCEEDED"), "log");
+        executor().startThrows(new ClientTransportException("I/O error on POST request: Connection refused",
+                new RuntimeException("Connection refused")));
+        ActivityRes created = executeOneTask("dpv-start-unreachable", "prod");
+        // When
+        postActivityApproved(created.getUuid());
+
+        postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
+
+        ActivityRes stored = getActivity(created.getUuid());
+        // Then
+        TaskRes task = stored.getTasks().get(0);
+        assertThat(task.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(task.getLogs()).singleElement().satisfies(log -> {
+            assertThat(log.getContent()).startsWith("Could not reach executor");
+            assertThat(log.getContent()).contains("(no HTTP response): I/O error on POST request: Connection refused");
+            assertThat(log.getContent()).doesNotContain("HTTP 500");
+        });
+    }
+
+    /**
+     * Feature: Executor failures
+     *
+     * Scenario: An unknown run status fails the task with the reason in the task logs
+     *   Given the executor reports the run with the status ERROR, which DevOps does not know
+     *   When the task execution runs
+     *   Then the task is FAILED and the activity is FAILED
+     *   And after the executor log, the task logs name the unknown status
+     */
+    @Test
+    public void whenStatusUnknownThenReasonInTaskLogs() {
+        // Given
+        stubExecutor(status("ERROR"), "executor log");
+        ActivityRes created = executeOneTask("dpv-status-unknown", "prod");
+        // When
+        postActivityApproved(created.getUuid());
+
+        postTaskApproved(created.getUuid(), created.getTasks().get(0).getUuid());
+
+        ActivityRes stored = getActivity(created.getUuid());
+        // Then
+        assertThat(stored.getTasks().get(0).getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(stored.getStatus()).isEqualTo(ExecutionStatus.FAILED);
+        assertThat(stored.getTasks().get(0).getLogs()).extracting(log -> log.getContent())
+                .satisfiesExactly(
+                        executorLog -> assertThat(executorLog).isEqualTo("executor log"),
+                        reason -> assertThat(reason).contains("returned the unknown status 'ERROR'"));
     }
 
     /**

@@ -13,7 +13,7 @@ interface ExecuteTaskExecutorOutboundPort {
 
     String startRun(Task task, Map<String, String> resolvedPipelineParameters);
 
-    ExecutorRunStatus readRunStatus(Task task);
+    StatusRead readRunStatus(Task task);
 
     void waitBeforeNextStatusRead();
 
@@ -26,4 +26,19 @@ interface ExecuteTaskExecutorOutboundPort {
      * the transport error otherwise.
      */
     String describeFailure(Task task, String action, RuntimeException failure);
+
+    /**
+     * One status read. {@code failureReason} is set when the executor's answer itself is unusable (no status, an
+     * unknown status): the run is then FAILED and the reason goes to the task logs.
+     */
+    record StatusRead(ExecutorRunStatus status, String failureReason) {
+
+        static StatusRead of(ExecutorRunStatus status) {
+            return new StatusRead(status, null);
+        }
+
+        static StatusRead unusable(String failureReason) {
+            return new StatusRead(ExecutorRunStatus.FAILED, failureReason);
+        }
+    }
 }
