@@ -2,6 +2,7 @@ package org.opendatamesh.platform.pp.devops.utils.client;
 
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientUnreadableResponseException;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpEntity;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpMethod;
 import org.springframework.util.LinkedMultiValueMap;
@@ -97,12 +98,14 @@ class RestTemplateWrapper implements RestUtilsTemplate {
             return new ClientException(response.getStatusCode().value(), response.getResponseBodyAsString());
         }
         if (e instanceof UnknownContentTypeException unreadable) {
+            String contentType = unreadable.getContentType() == null ? "" : " (" + unreadable.getContentType() + ")";
             return new ClientException(unreadable.getStatusCode().value(),
-                    "Unreadable response (" + unreadable.getContentType() + "): " + unreadable.getResponseBodyAsString());
+                    "Unreadable response" + contentType + ": " + unreadable.getResponseBodyAsString());
         }
         if (e instanceof ResourceAccessException) {
             return new ClientTransportException(e.getMessage(), e);
         }
-        return new ClientException(500, e.getMessage());
+        // An answer whose body could not be extracted (e.g. invalid JSON): its status is not known here.
+        return new ClientUnreadableResponseException(e.getMessage(), e);
     }
 }

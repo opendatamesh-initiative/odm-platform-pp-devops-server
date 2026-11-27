@@ -8,20 +8,28 @@ import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpEntity;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpMethod;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.apache.hc.core5.http.NoHttpResponseException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientUnreadableResponseException;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-/** Which failures count as "no HTTP response" (ClientTransportException) and which keep the HTTP status. */
+/**
+ * Which failures count as "no HTTP response" (ClientTransportException) and which keep the HTTP status. The
+ * RestTemplate comes from RestTemplateBuilder, as in production (Apache HttpComponents on the classpath).
+ */
 class RestTemplateWrapperTest {
 
     private HttpServer server;
@@ -68,11 +76,77 @@ class RestTemplateWrapperTest {
         assertThat(failure.getResponseBody()).isEqualTo("Unknown environment prod");
     }
 
+    @Test
+    void whenJsonAnswerCannotBeParsedThenUnreadableNotHttp500() throws IOException {
+        String url = serve(200, "application/json", "{\"providerRunId\": ");
+
+        ClientException failure = catchThrowableOfType(ClientException.class, () -> post(url));
+
+        assertThat(failure).isInstanceOf(ClientUnreadableResponseException.class);
+        assertThat(failure.getMessage()).startsWith("unreadable answer:");
+    }
+
+    @Test
+    void whenAnswerHasNoContentTypeThenNoNullInMessage() throws IOException {
+        String url = serve(200, null, "plain words");
+
+        ClientException failure = catchThrowableOfType(ClientException.class, () -> post(url));
+
+        assertThat(failure.getResponseBody()).doesNotContain("null");
+    }
+
+    @Test
+    void whenConnectionClosedWithoutAnswerThenTransportFailureAfterSending() throws Exception {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            Thread closer = new Thread(() -> {
+                try (Socket client = socket.accept()) {
+                    client.getInputStream().read(new byte[1024]);
+                } catch (IOException ignored) {
+                    // the test only needs the connection closed without an answer
+                }
+            });
+            closer.start();
+
+            ClientException failure = catchThrowableOfType(ClientException.class,
+                    () -> post("http://localhost:" + socket.getLocalPort() + "/start"));
+
+            closer.join(5000);
+            assertThat(failure).isInstanceOf(ClientTransportException.class);
+            assertThat(failure).hasRootCauseInstanceOf(NoHttpResponseException.class);
+        }
+    }
+
+    @Test
+    void whenNoAnswerInTimeThenTransportFailureWithReadTimeout() throws IOException {
+        server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/start", exchange -> {
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.close();
+        });
+        server.start();
+
+        ClientException failure = catchThrowableOfType(ClientException.class,
+                () -> post("http://localhost:" + server.getAddress().getPort() + "/start", Duration.ofMillis(300)));
+
+        assertThat(failure).isInstanceOf(ClientTransportException.class);
+        assertThat(failure).hasRootCauseInstanceOf(SocketTimeoutException.class);
+        assertThat(failure.getMessage()).startsWith("no HTTP response:");
+    }
+
     private JsonNode post(String url) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(2000);
-        factory.setReadTimeout(2000);
-        return RestTemplateWrapper.wrap(new RestTemplate(factory))
+        return post(url, Duration.ofSeconds(2));
+    }
+
+    private JsonNode post(String url, Duration readTimeout) {
+        RestTemplate restTemplate = new RestTemplateBuilder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .readTimeout(readTimeout)
+                .build();
+        return RestTemplateWrapper.wrap(restTemplate)
                 .exchange(url, HttpMethod.POST, new HttpEntity<>("{}", List.of()), JsonNode.class);
     }
 
@@ -80,7 +154,9 @@ class RestTemplateWrapperTest {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/start", exchange -> {
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", contentType);
+            if (contentType != null) {
+                exchange.getResponseHeaders().add("Content-Type", contentType);
+            }
             exchange.sendResponseHeaders(status, bytes.length);
             try (OutputStream out = exchange.getResponseBody()) {
                 out.write(bytes);

@@ -10,4 +10,9 @@ public class ClientTransportException extends ClientException {
         super(500, message);
         initCause(cause);
     }
+
+    @Override
+    public String getMessage() {
+        return "no HTTP response: " + getResponseBody();
+    }
 }

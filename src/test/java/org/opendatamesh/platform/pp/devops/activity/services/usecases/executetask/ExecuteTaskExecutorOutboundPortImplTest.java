@@ -3,7 +3,9 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.executeta
 import org.junit.jupiter.api.Test;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
+import org.apache.hc.core5.http.NoHttpResponseException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientUnreadableResponseException;
 import org.springframework.web.client.ResourceAccessException;
 
 import java.net.ConnectException;
@@ -41,9 +43,40 @@ class ExecuteTaskExecutorOutboundPortImplTest {
 
         String reason = port.describeFailure(task(), "start the task", failure);
 
-        assertThat(reason).startsWith("Executor blindata did not answer in time when asked to start the task");
-        assertThat(reason).contains("may still be acting on it");
+        assertThat(reason).startsWith("Executor blindata did not answer when asked to start the task");
+        assertThat(reason).contains("may have started the run");
         assertThat(reason).doesNotContain("HTTP 500");
+    }
+
+    @Test
+    void whenStatusReadTimesOutThenNoUntrackedRunNote() {
+        ClientTransportException failure = new ClientTransportException("I/O error: Read timed out",
+                new ResourceAccessException("I/O error", new SocketTimeoutException("Read timed out")));
+
+        String reason = port.describeFailure(task(), "read the run status", failure);
+
+        assertThat(reason).isEqualTo("Executor blindata did not answer when asked to read the run status (I/O error: Read timed out).");
+    }
+
+    @Test
+    void whenConnectionClosedWithoutAnswerThenRequestCountsAsSent() {
+        ClientTransportException failure = new ClientTransportException("I/O error: target server failed to respond",
+                new ResourceAccessException("I/O error", new NoHttpResponseException("target server failed to respond")));
+
+        String reason = port.describeFailure(task(), "start the task", failure);
+
+        assertThat(reason).startsWith("Executor blindata did not answer when asked to start the task");
+    }
+
+    @Test
+    void whenAnswerUnreadableThenNoHttpStatusClaimed() {
+        ClientUnreadableResponseException failure = new ClientUnreadableResponseException(
+                "Error while extracting response for type [ExecutorTaskStartResultRes]", new RuntimeException());
+
+        String reason = port.describeFailure(task(), "start the task", failure);
+
+        assertThat(reason).isEqualTo("Executor blindata returned an answer that could not be read when asked to start the "
+                + "task: Error while extracting response for type [ExecutorTaskStartResultRes]");
     }
 
     private static Task task() {

@@ -13,6 +13,7 @@ import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTas
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientUnreadableResponseException;
 import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorRunStatus;
@@ -120,12 +121,18 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
         if (failure instanceof ClientTransportException transportFailure) {
             String message = excerpt(transportFailure.getResponseBody());
             String detail = message.isEmpty() ? "" : " (" + message + ")";
-            if (isResponseTimeout(transportFailure)) {
-                return "Executor " + task.getExecutorName() + " did not answer in time when asked to " + action + detail
-                        + ". The request reached the executor, which may still be acting on it: a run started this way "
-                        + "is not tracked by DevOps.";
+            if (requestWasSent(transportFailure)) {
+                String sentence = "Executor " + task.getExecutorName() + " did not answer when asked to " + action + detail
+                        + ".";
+                return isStart(action) ? sentence + " The request reached the executor, which may have started the run:"
+                        + " a run started this way is not tracked by DevOps." : sentence;
             }
             return "Could not reach executor " + task.getExecutorName() + " to " + action + detail + ".";
+        }
+        if (failure instanceof ClientUnreadableResponseException unreadable) {
+            String message = excerpt(unreadable.getResponseBody());
+            return "Executor " + task.getExecutorName() + " returned an answer that could not be read when asked to "
+                    + action + (message.isEmpty() ? "" : ": " + message);
         }
         if (failure instanceof ClientException clientFailure) {
             String body = excerpt(clientFailure.getResponseBody());
@@ -135,21 +142,29 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
         return executor + ": " + (message.isEmpty() ? failure.getClass().getSimpleName() : message);
     }
 
-    /** A read timeout: the connection was made and the request sent, but no answer came back. */
-    private static boolean isResponseTimeout(Throwable failure) {
+    private static boolean isStart(String action) {
+        return action.startsWith("start");
+    }
+
+    /**
+     * The connection was made and the request sent, but no answer came back: a read timeout, or the connection closed
+     * before an answer (Apache HttpClient's NoHttpResponseException). Connect timeouts and refusals are not.
+     */
+    private static boolean requestWasSent(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof java.net.http.HttpConnectTimeoutException) {
+            if (cause instanceof java.net.http.HttpConnectTimeoutException
+                    || cause instanceof org.apache.hc.client5.http.ConnectTimeoutException
+                    || cause instanceof java.net.ConnectException
+                    || cause instanceof java.net.UnknownHostException) {
                 return false;
             }
-            if (cause instanceof java.net.http.HttpTimeoutException) {
+            if (cause instanceof java.net.http.HttpTimeoutException
+                    || cause instanceof org.apache.hc.core5.http.NoHttpResponseException) {
                 return true;
             }
-            if (cause instanceof java.net.SocketTimeoutException
-                    && cause.getMessage() != null && cause.getMessage().toLowerCase(Locale.ROOT).contains("read")) {
-                return true;
-            }
-            if (cause.getCause() == cause) {
-                break;
+            if (cause instanceof java.net.SocketTimeoutException) {
+                String message = cause.getMessage() == null ? "" : cause.getMessage().toLowerCase(Locale.ROOT);
+                return !message.contains("connect");
             }
         }
         return false;
