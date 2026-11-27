@@ -2,6 +2,7 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.executeta
 
 import org.junit.jupiter.api.Test;
 import org.opendatamesh.platform.pp.devops.activity.services.usecases.executetask.ExecuteTaskExecutorOutboundPort.ExecutorCall;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientAnswerBrokenException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientRequestFailedException;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
@@ -102,6 +103,19 @@ class ExecuteTaskExecutorOutboundPortImplTest {
 
         assertThat(reason).isEqualTo("DevOps could not send the request to executor blindata to start the task: "
                 + "No HttpMessageConverter for java.lang.Object");
+    }
+
+    @Test
+    void whenAnswerBreaksOffDuringStartThenRunMayHaveStarted() {
+        ClientAnswerBrokenException failure = new ClientAnswerBrokenException(
+                "ConnectionClosedException: Premature end of Content-Length delimited message body", new RuntimeException());
+
+        String reason = port.describeFailure(task(), ExecutorCall.START, failure);
+
+        assertThat(reason).startsWith("The answer of executor blindata broke off when asked to start the task "
+                + "(ConnectionClosedException: Premature end of Content-Length delimited message body).");
+        assertThat(reason).contains("may have started the run");
+        assertThat(reason).doesNotContain("could not send");
     }
 
     private static Task task() {

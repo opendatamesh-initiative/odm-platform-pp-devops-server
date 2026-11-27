@@ -11,6 +11,7 @@ import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTas
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStartResultRes;
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientAnswerBrokenException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientRequestFailedException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
@@ -123,8 +124,10 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
         if (failure instanceof ClientTransportException transportFailure) {
             String message = excerpt(transportFailure.getResponseBody());
             String detail = message.isEmpty() ? "" : " (" + message + ")";
-            if (requestWasSent(transportFailure)) {
-                String sentence = executor + " did not answer when asked to " + action + detail + ".";
+            if (transportFailure instanceof ClientAnswerBrokenException || requestWasSent(transportFailure)) {
+                String sentence = transportFailure instanceof ClientAnswerBrokenException
+                        ? "The answer of executor " + task.getExecutorName() + " broke off when asked to " + action + detail + "."
+                        : executor + " did not answer when asked to " + action + detail + ".";
                 return call == ExecutorCall.START ? sentence + " The request reached the executor, which may have"
                         + " started the run: a run started this way is not tracked by DevOps." : sentence;
             }

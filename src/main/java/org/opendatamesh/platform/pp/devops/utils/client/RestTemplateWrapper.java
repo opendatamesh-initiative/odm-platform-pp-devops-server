@@ -1,5 +1,6 @@
 package org.opendatamesh.platform.pp.devops.utils.client;
 
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientAnswerBrokenException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientRequestFailedException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
@@ -116,6 +117,12 @@ class RestTemplateWrapper implements RestUtilsTemplate {
         if (unreadableBody != null) {
             // An answer whose body could not be extracted (e.g. invalid JSON): its status is not known here.
             return new ClientUnreadableResponseException(unreadableDetail(e, unreadableBody), e);
+        }
+        java.io.IOException brokenAnswer = causeOfType(e, java.io.IOException.class);
+        if (brokenAnswer != null) {
+            // RestTemplate wraps an I/O failure while reading the answer body in a plain RestClientException.
+            return new ClientAnswerBrokenException(brokenAnswer.getClass().getSimpleName()
+                    + (brokenAnswer.getMessage() == null ? "" : ": " + brokenAnswer.getMessage()), e);
         }
         // Anything else failed on this side (e.g. the request body could not be written): no answer was read.
         return new ClientRequestFailedException(e.getMessage(), e);

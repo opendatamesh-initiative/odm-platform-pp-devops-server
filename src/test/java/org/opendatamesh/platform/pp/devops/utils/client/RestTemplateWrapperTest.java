@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientAnswerBrokenException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpEntity;
@@ -129,6 +130,31 @@ class RestTemplateWrapperTest {
             closer.join(5000);
             assertThat(failure).isInstanceOf(ClientTransportException.class);
             assertThat(failure).hasRootCauseInstanceOf(NoHttpResponseException.class);
+        }
+    }
+
+    @Test
+    void whenAnswerBreaksOffMidBodyThenAnswerBrokenNotRequestFailed() throws Exception {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            Thread halfAnswer = new Thread(() -> {
+                try (Socket client = socket.accept()) {
+                    client.getInputStream().read(new byte[4096]);
+                    client.getOutputStream().write(("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                            + "Content-Length: 100\r\n\r\n{\"providerRunId\": \"run").getBytes(StandardCharsets.UTF_8));
+                    client.getOutputStream().flush();
+                } catch (IOException ignored) {
+                    // the test only needs the body cut short
+                }
+            });
+            halfAnswer.start();
+
+            ClientException failure = catchThrowableOfType(ClientException.class,
+                    () -> post("http://localhost:" + socket.getLocalPort() + "/start"));
+
+            halfAnswer.join(5000);
+            assertThat(failure).isInstanceOf(ClientAnswerBrokenException.class);
+            assertThat(failure).isNotInstanceOf(ClientRequestFailedException.class);
+            assertThat(failure.getMessage()).startsWith("answer broke off:");
         }
     }
 
