@@ -135,7 +135,7 @@ class ExecuteTask implements UseCase {
         try {
             providerRunId = executorPort.startRun(task, resolved);
         } catch (RuntimeException startFailed) {
-            String reason = executorPort.describeFailure(task, "start the task", startFailed);
+            String reason = executorPort.describeFailure(task, ExecuteTaskExecutorOutboundPort.ExecutorCall.START, startFailed);
             logger.warn("Executor start failed for task {} of activity {}: {}",
                     task.getUuid(), task.getActivity().getUuid(), reason, startFailed);
             failRunningTask(task, reason);
@@ -177,7 +177,7 @@ class ExecuteTask implements UseCase {
             try {
                 read = executorPort.readRunStatus(task);
             } catch (RuntimeException readFailed) {
-                lastReadFailure = executorPort.describeFailure(task, "read the run status", readFailed);
+                lastReadFailure = executorPort.describeFailure(task, ExecuteTaskExecutorOutboundPort.ExecutorCall.READ_STATUS, readFailed);
                 logger.warn("Executor status read failed for task {} (run {}) on attempt {} of {}: {}",
                         task.getUuid(), task.getProviderRunId(), attempt, max, lastReadFailure, readFailed);
                 if (attempt == max) {
@@ -218,7 +218,7 @@ class ExecuteTask implements UseCase {
             return executorPort.readRunLog(task);
         } catch (RuntimeException readFailed) {
             logger.warn("Executor log read failed for task {} (run {}): {}", task.getUuid(), task.getProviderRunId(),
-                    executorPort.describeFailure(task, "read the run logs", readFailed), readFailed);
+                    executorPort.describeFailure(task, ExecuteTaskExecutorOutboundPort.ExecutorCall.READ_LOGS, readFailed), readFailed);
             return Optional.empty();
         }
     }

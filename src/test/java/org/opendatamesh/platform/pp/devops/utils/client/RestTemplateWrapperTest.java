@@ -9,7 +9,12 @@ import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportExce
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpEntity;
 import org.opendatamesh.platform.pp.devops.utils.client.http.HttpMethod;
 import org.apache.hc.core5.http.NoHttpResponseException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientRequestFailedException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientUnreadableResponseException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.UnknownContentTypeException;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.web.client.RestTemplate;
 
@@ -83,16 +88,27 @@ class RestTemplateWrapperTest {
         ClientException failure = catchThrowableOfType(ClientException.class, () -> post(url));
 
         assertThat(failure).isInstanceOf(ClientUnreadableResponseException.class);
-        assertThat(failure.getMessage()).startsWith("unreadable answer:");
+        assertThat(failure.getMessage()).startsWith("unreadable answer: content type application/json, ");
+        assertThat(failure.getResponseBody()).doesNotContain("class org.").doesNotContain("JsonNode");
     }
 
     @Test
-    void whenAnswerHasNoContentTypeThenNoNullInMessage() throws IOException {
-        String url = serve(200, null, "plain words");
+    void whenUnknownContentTypeIsNullThenNoNullInMessage() {
+        UnknownContentTypeException unknown = new UnknownContentTypeException(JsonNode.class, null, HttpStatus.OK, "OK",
+                new HttpHeaders(), "plain words".getBytes(StandardCharsets.UTF_8));
 
-        ClientException failure = catchThrowableOfType(ClientException.class, () -> post(url));
+        ClientException failure = RestTemplateWrapper.translate(unknown);
 
-        assertThat(failure.getResponseBody()).doesNotContain("null");
+        assertThat(failure.getCode()).isEqualTo(200);
+        assertThat(failure.getResponseBody()).isEqualTo("Unreadable response: plain words");
+    }
+
+    @Test
+    void whenRequestBodyCannotBeWrittenThenRequestFailedNotUnreadableAnswer() {
+        ClientException failure = RestTemplateWrapper.translate(new RestClientException("No HttpMessageConverter for java.lang.Object"));
+
+        assertThat(failure).isInstanceOf(ClientRequestFailedException.class);
+        assertThat(failure).isNotInstanceOf(ClientUnreadableResponseException.class);
     }
 
     @Test

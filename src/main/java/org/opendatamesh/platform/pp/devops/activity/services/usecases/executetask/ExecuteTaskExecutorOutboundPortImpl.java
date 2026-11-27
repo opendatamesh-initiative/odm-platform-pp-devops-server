@@ -12,6 +12,7 @@ import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTas
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
+import org.opendatamesh.platform.pp.devops.exceptions.client.ClientRequestFailedException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientUnreadableResponseException;
 import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
@@ -116,45 +117,50 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
     }
 
     @Override
-    public String describeFailure(Task task, String action, RuntimeException failure) {
-        String executor = "Executor " + task.getExecutorName() + " failed to " + action;
+    public String describeFailure(Task task, ExecutorCall call, RuntimeException failure) {
+        String action = call.action();
+        String executor = "Executor " + task.getExecutorName();
         if (failure instanceof ClientTransportException transportFailure) {
             String message = excerpt(transportFailure.getResponseBody());
             String detail = message.isEmpty() ? "" : " (" + message + ")";
             if (requestWasSent(transportFailure)) {
-                String sentence = "Executor " + task.getExecutorName() + " did not answer when asked to " + action + detail
-                        + ".";
-                return isStart(action) ? sentence + " The request reached the executor, which may have started the run:"
-                        + " a run started this way is not tracked by DevOps." : sentence;
+                String sentence = executor + " did not answer when asked to " + action + detail + ".";
+                return call == ExecutorCall.START ? sentence + " The request reached the executor, which may have"
+                        + " started the run: a run started this way is not tracked by DevOps." : sentence;
             }
             return "Could not reach executor " + task.getExecutorName() + " to " + action + detail + ".";
         }
         if (failure instanceof ClientUnreadableResponseException unreadable) {
             String message = excerpt(unreadable.getResponseBody());
-            return "Executor " + task.getExecutorName() + " returned an answer that could not be read when asked to "
-                    + action + (message.isEmpty() ? "" : ": " + message);
+            return executor + " returned an answer that could not be read when asked to " + action
+                    + (message.isEmpty() ? "" : " (" + message + ")");
+        }
+        if (failure instanceof ClientRequestFailedException requestFailed) {
+            String message = excerpt(requestFailed.getResponseBody());
+            return "DevOps could not send the request to executor " + task.getExecutorName() + " to " + action
+                    + (message.isEmpty() ? "" : ": " + message);
         }
         if (failure instanceof ClientException clientFailure) {
             String body = excerpt(clientFailure.getResponseBody());
-            return executor + " (HTTP " + clientFailure.getCode() + ")" + (body.isEmpty() ? "" : ": " + body);
+            return executor + " failed to " + action + " (HTTP " + clientFailure.getCode() + ")"
+                    + (body.isEmpty() ? "" : ": " + body);
         }
         String message = excerpt(failure.getMessage());
-        return executor + ": " + (message.isEmpty() ? failure.getClass().getSimpleName() : message);
-    }
-
-    private static boolean isStart(String action) {
-        return action.startsWith("start");
+        return executor + " failed to " + action + ": " + (message.isEmpty() ? failure.getClass().getSimpleName() : message);
     }
 
     /**
-     * The connection was made and the request sent, but no answer came back: a read timeout, or the connection closed
-     * before an answer (Apache HttpClient's NoHttpResponseException). Connect timeouts and refusals are not.
+     * The connection was made and the request sent, but no answer came back: a read timeout, the connection closed
+     * before an answer (Apache HttpClient's NoHttpResponseException), or lost (reset, broken pipe). Connect
+     * timeouts, refusals, unknown hosts and unreachable networks are not.
      */
     private static boolean requestWasSent(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof java.net.http.HttpConnectTimeoutException
                     || cause instanceof org.apache.hc.client5.http.ConnectTimeoutException
                     || cause instanceof java.net.ConnectException
+                    || cause instanceof java.net.NoRouteToHostException
+                    || cause instanceof java.net.PortUnreachableException
                     || cause instanceof java.net.UnknownHostException) {
                 return false;
             }
@@ -165,6 +171,10 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
             if (cause instanceof java.net.SocketTimeoutException) {
                 String message = cause.getMessage() == null ? "" : cause.getMessage().toLowerCase(Locale.ROOT);
                 return !message.contains("connect");
+            }
+            if (cause instanceof java.net.SocketException) {
+                // Connection reset or broken pipe on an established connection.
+                return true;
             }
         }
         return false;
