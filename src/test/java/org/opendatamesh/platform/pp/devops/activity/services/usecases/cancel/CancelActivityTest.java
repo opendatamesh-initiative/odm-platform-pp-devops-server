@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
+import org.opendatamesh.platform.pp.devops.activity.entities.TaskLog;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 
@@ -64,6 +65,42 @@ class CancelActivityTest {
     }
 
     /**
+     * Feature: Cancel an activity
+     *
+     * Scenario: A running full-control task that DevOps no longer follows is closed by the cancel
+     *   Given a full-control task is RUNNING with a provider run id
+     *   And no DevOps follower records its outcome (for example after a restart)
+     *   When the user cancels the activity and the executor accepts the stop
+     *   Then the cancel marks the task CANCELED with the reason in its logs
+     *   And advances the activity, which ends CANCELED
+     */
+    @Test
+    void whenRunningTaskIsNoLongerFollowedThenCancelClosesItAndAdvances() throws Exception {
+        FakePersistence persistence = new FakePersistence(OBJECT_MAPPER.readTree("{}"));
+        FakeExecutor executor = new FakeExecutor(persistence);
+        executor.followed = false;
+        executor.endsRun = false;
+        List<Activity> presented = new ArrayList<>();
+
+        new CancelActivity(
+                new CancelActivityCommand(ACTIVITY_UUID),
+                presented::add,
+                persistence,
+                activityUuid -> persistence.activityStatus = ExecutionStatus.CANCELED,
+                executor,
+                new NoWaitPolling(),
+                new DirectTransactions()
+        ).execute();
+
+        assertThat(executor.canceled).hasSize(1);
+        assertThat(persistence.taskStatus).isEqualTo(ExecutionStatus.CANCELED);
+        assertThat(persistence.savedLogs).singleElement()
+                .satisfies(log -> assertThat(log.getContent()).contains("no longer following"));
+        assertThat(presented).singleElement()
+                .satisfies(activity -> assertThat(activity.getStatus()).isEqualTo(ExecutionStatus.CANCELED));
+    }
+
+    /**
      * Stored activity with one task. Every read returns a fresh copy, as a detached read from the database would.
      */
     private static final class FakePersistence implements CancelActivityPersistenceOutboundPort {
@@ -71,6 +108,7 @@ class CancelActivityTest {
         private final JsonNode executorParameters;
         private ExecutionStatus activityStatus = ExecutionStatus.RUNNING;
         private ExecutionStatus taskStatus = ExecutionStatus.RUNNING;
+        private List<TaskLog> savedLogs = List.of();
 
         FakePersistence(JsonNode executorParameters) {
             this.executorParameters = executorParameters;
@@ -88,6 +126,9 @@ class CancelActivityTest {
 
         @Override
         public Activity save(Activity activity) {
+            Task task = activity.getTasks().get(0);
+            taskStatus = task.getStatus();
+            savedLogs = task.getLogs() == null ? List.of() : new ArrayList<>(task.getLogs());
             return activity;
         }
 
@@ -120,6 +161,8 @@ class CancelActivityTest {
 
         private final FakePersistence persistence;
         private final List<Task> canceled = new ArrayList<>();
+        private boolean followed = true;
+        private boolean endsRun = true;
 
         FakeExecutor(FakePersistence persistence) {
             this.persistence = persistence;
@@ -131,9 +174,16 @@ class CancelActivityTest {
         }
 
         @Override
+        public boolean isRunFollowed(String taskUuid) {
+            return followed;
+        }
+
+        @Override
         public CancelRunResult cancelRun(Task task) {
             canceled.add(task);
-            persistence.runCanceled();
+            if (endsRun) {
+                persistence.runCanceled();
+            }
             return CancelRunResult.POSTED;
         }
     }

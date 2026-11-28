@@ -1,7 +1,5 @@
 package org.opendatamesh.platform.pp.devops.activity.services.usecases.execute;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutorParameters;
@@ -13,9 +11,10 @@ import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundP
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
 import org.springframework.util.StringUtils;
 
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -44,14 +43,13 @@ import java.util.Set;
  */
 class ExecuteActivity implements UseCase {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
     private final ExecuteActivityCommand command;
     private final ExecuteActivityPresenter presenter;
     private final ExecuteActivityPersistenceOutboundPort persistencePort;
     private final ExecuteActivityExecutorOutboundPort executorPort;
     private final ExecuteActivitySecretsOutboundPort secretsPort;
     private final ExecuteActivityNotificationOutboundPort notificationPort;
+    private final ExecuteActivityParametersOutboundPort parametersPort;
     private final TransactionalOutboundPort transactionalPort;
 
     private Activity activity;
@@ -63,6 +61,7 @@ class ExecuteActivity implements UseCase {
                     ExecuteActivityExecutorOutboundPort executorPort,
                     ExecuteActivitySecretsOutboundPort secretsPort,
                     ExecuteActivityNotificationOutboundPort notificationPort,
+                    ExecuteActivityParametersOutboundPort parametersPort,
                     TransactionalOutboundPort transactionalPort) {
         this.command = command;
         this.presenter = presenter;
@@ -70,20 +69,47 @@ class ExecuteActivity implements UseCase {
         this.executorPort = executorPort;
         this.secretsPort = secretsPort;
         this.notificationPort = notificationPort;
+        this.parametersPort = parametersPort;
         this.transactionalPort = transactionalPort;
     }
 
     @Override
     public void execute() {
         validateCommand();
-        transactionalPort.doInTransaction(() -> {
-            refuseIfAnotherExecutionIsOpen();
-            prepareForExecution();
-            activity = persistencePort.create(activity);
-            secretsPort.storeExecutorSecrets(activity, fullControlExecutorNames);
-            notificationPort.emitActivityExecutionRequested(activity);
-            presenter.presentActivityExecutionRequested(activity);
-        });
+        Activity created = transactionalPort.doInTransactionWithResults(ignored -> createPendingActivity(), null);
+        // Announced only once stored: a request that loses a conflict at commit announces nothing.
+        try {
+            notificationPort.emitActivityExecutionRequested(created);
+        } catch (RuntimeException emitFailed) {
+            // Nobody was asked to approve it: close it, so it does not block the next request forever.
+            transactionalPort.doInTransaction(() -> failUnannouncedActivity(created.getUuid()));
+            secretsPort.removeExecutorSecrets(created.getUuid());
+            throw emitFailed;
+        }
+        presenter.presentActivityExecutionRequested(created);
+    }
+
+    private Activity createPendingActivity() {
+        refuseIfAnotherExecutionIsOpen();
+        prepareForExecution();
+        Activity saved = persistencePort.create(activity);
+        secretsPort.storeExecutorSecrets(saved, fullControlExecutorNames);
+        return saved;
+    }
+
+    private void failUnannouncedActivity(String activityUuid) {
+        Activity stored = persistencePort.findForUpdate(activityUuid);
+        if (stored.getStatus() != ExecutionStatus.PENDING) {
+            return;
+        }
+        Timestamp finishedAt = new Timestamp(System.currentTimeMillis());
+        for (Task task : stored.getTasks()) {
+            task.setStatus(ExecutionStatus.CANCELED);
+            task.setFinishedAt(finishedAt);
+        }
+        stored.setStatus(ExecutionStatus.FAILED);
+        stored.setFinishedAt(finishedAt);
+        persistencePort.save(stored);
     }
 
     private void validateCommand() {
@@ -92,10 +118,15 @@ class ExecuteActivity implements UseCase {
         }
         activity = command.activity();
         activity.setDataProductVersionUuid(trimToNull(activity.getDataProductVersionUuid()));
+        activity.setDataProductFqn(trimToNull(activity.getDataProductFqn()));
         activity.setDataProductVersionNumber(trimToNull(activity.getDataProductVersionNumber()));
         activity.setName(trimToNull(activity.getName()));
         if (!StringUtils.hasText(activity.getDataProductVersionUuid())) {
             throw new BadRequestException("Data product version UUID is required");
+        }
+        // The CLI finds an execution by data product FQN, and Policy V1 identifies the product by it.
+        if (!StringUtils.hasText(activity.getDataProductFqn())) {
+            throw new BadRequestException("Data product FQN is required");
         }
         if (!StringUtils.hasText(activity.getDataProductVersionNumber())) {
             throw new BadRequestException("Data product version number is required");
@@ -109,8 +140,13 @@ class ExecuteActivity implements UseCase {
         if (activity.getTasks() == null || activity.getTasks().isEmpty()) {
             throw new BadRequestException("Activity must have at least one task");
         }
+        Set<String> taskNames = new HashSet<>();
         for (Task task : activity.getTasks()) {
             validateTask(task);
+            // Tasks are addressed by name (CLI, result references): a name must identify one task.
+            if (!taskNames.add(task.getName())) {
+                throw new BadRequestException("Task name " + task.getName() + " is used by more than one task");
+            }
         }
     }
 
@@ -171,12 +207,7 @@ class ExecuteActivity implements UseCase {
     }
 
     private ExecutorParameters readExecutorParameters(Task task) {
-        ExecutorParameters parameters;
-        try {
-            parameters = OBJECT_MAPPER.treeToValue(task.getExecutorParameters(), ExecutorParameters.class);
-        } catch (Exception exception) {
-            throw new BadRequestException("Task " + task.getName() + ": executor parameters are required");
-        }
+        ExecutorParameters parameters = parametersPort.readExecutorParameters(task);
         if (parameters == null) {
             throw new BadRequestException("Task " + task.getName() + ": executor parameters are required");
         }
@@ -184,13 +215,9 @@ class ExecuteActivity implements UseCase {
     }
 
     private Map<String, String> readPipelineParameters(Task task) {
-        if (!StringUtils.hasText(task.getPipelineParameters())) {
-            return null;
-        }
         try {
-            return OBJECT_MAPPER.readValue(task.getPipelineParameters(), new TypeReference<LinkedHashMap<String, String>>() {
-            });
-        } catch (Exception exception) {
+            return parametersPort.readPipelineParameters(task);
+        } catch (IllegalArgumentException invalid) {
             throw new BadRequestException("Task " + task.getName() + ": pipeline parameters are not valid JSON");
         }
     }

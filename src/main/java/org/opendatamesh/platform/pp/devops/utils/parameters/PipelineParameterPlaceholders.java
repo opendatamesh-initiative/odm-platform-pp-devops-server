@@ -2,7 +2,10 @@ package org.opendatamesh.platform.pp.devops.utils.parameters;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.cfg.JsonNodeFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.LinkedHashMap;
@@ -13,6 +16,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class PipelineParameterPlaceholders {
+
+    /**
+     * Reads stored task results for substitution. Numbers keep the digits the pipeline sent:
+     * 1.10 stays 1.10, and no number is turned into 1000000.0 or 1.0E-7.
+     */
+    public static final ObjectMapper RESULT_READER = JsonMapper.builder()
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .disable(JsonNodeFeature.STRIP_TRAILING_BIGDECIMAL_ZEROES)
+            .build();
+
 
     private static final Pattern PLACEHOLDER = Pattern.compile("\\$\\{([^}]+)\\}");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -109,6 +122,10 @@ public final class PipelineParameterPlaceholders {
             if (node == null || node.isMissingNode() || node.isNull()) {
                 return null;
             }
+        }
+        if (node.isBigDecimal()) {
+            // Plain notation, digits as sent: never Double.toString's 1.0E-7 or 1000000.0.
+            return node.decimalValue().toPlainString();
         }
         if (node.isValueNode()) {
             return node.asText();

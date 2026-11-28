@@ -28,15 +28,28 @@ public class ObserverService {
     @Async
     public void processNotification(NotificationDispatchRes notification) {
         Long notificationId = notification.getSequenceId();
+        boolean handled;
         try {
             handleEvent(notification.getEvent());
-            notificationClient.processingSuccess(notificationId);
+            handled = true;
         } catch (DevOpsApiException e) {
             logger.warn("Failed to dispatch notification: {}", e.getMessage(), e);
-            notificationClient.processingFailure(notificationId);
+            handled = false;
         } catch (Exception e) {
             logger.error("Failed to dispatch notification: {}", e.getMessage(), e);
-            notificationClient.processingFailure(notificationId);
+            handled = false;
+        }
+        // The outcome is reported apart from the handling: a failed acknowledgement must not turn an event
+        // that took effect into a failure (which invites a replay), and it must not escape this async method.
+        try {
+            if (handled) {
+                notificationClient.processingSuccess(notificationId);
+            } else {
+                notificationClient.processingFailure(notificationId);
+            }
+        } catch (Exception e) {
+            logger.error("Could not report the {} of notification {} to the Notification service: {}",
+                    handled ? "success" : "failure", notificationId, e.getMessage(), e);
         }
     }
 

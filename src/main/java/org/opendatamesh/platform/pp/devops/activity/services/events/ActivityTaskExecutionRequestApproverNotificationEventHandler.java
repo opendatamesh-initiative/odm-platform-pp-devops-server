@@ -1,4 +1,4 @@
-package org.opendatamesh.platform.pp.devops.activity.services.usecases.approvetaskexecutionrequest;
+package org.opendatamesh.platform.pp.devops.activity.services.events;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;

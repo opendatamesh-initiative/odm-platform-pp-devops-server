@@ -13,7 +13,8 @@ import java.util.List;
 @Configuration
 public class NotificationClientConfig {
     private static final Logger logger = LoggerFactory.getLogger(NotificationClientConfig.class);
-    @Value("${server.baseUrl}")
+    // Canonical (kebab-case) name: Spring then binds server.baseUrl, SERVER_BASEURL and SERVER_BASE_URL alike.
+    @Value("${server.base-url}")
     private String baseUrl;
     @Value("${devops.observer.name:devops}")
     private String observerName;

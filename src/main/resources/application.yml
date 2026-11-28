@@ -13,17 +13,15 @@ odm:
       active: false
       address: http://localhost:8001
     policy-service:
+      # With active=true and no version, an external Policy service publishes decisions on Notification.
+      # Set version: 1 (and address) only to have DevOps call a Policy service V1 itself.
       active: false
-      version: 1
-      address: http://localhost:8005
   utility-plane:
     executors:
       polling-interval: 30s
       secrets-ttl: 1h
 
 spring:
-  profiles:
-    active: test
   application:
     name: odm-platform-pp-devops-server
   banner:
@@ -32,12 +30,19 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-    locations: classpath:db/migration/postgresql
+  threads:
+    virtual:
+      # Notifications run on the async executor and a full-control task waits on it for its whole run:
+      # virtual threads keep a long run from holding one of a few platform threads.
+      enabled: true
   jpa:
+    # Use cases manage their own transactions; a request must not keep a database connection while it waits.
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
     properties:
       hibernate:
         default_schema: odm_devops
-        ddl-auto: validate
 
 info:
   version: @project.version@

@@ -58,7 +58,7 @@ With the `dev` profile:
 | Swagger UI | http://localhost:8002/swagger-ui.html |
 | OpenAPI | http://localhost:8002/v3/api-docs |
 
-Product-plane prefix: **`/api/v2/pp/devops/`**.
+The product-plane operations and their paths are listed in the OpenAPI description.
 
 ### External services for local execution flows
 

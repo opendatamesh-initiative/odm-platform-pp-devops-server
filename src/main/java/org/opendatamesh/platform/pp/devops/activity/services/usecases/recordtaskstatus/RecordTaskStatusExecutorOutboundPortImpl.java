@@ -1,6 +1,5 @@
 package org.opendatamesh.platform.pp.devops.activity.services.usecases.recordtaskstatus;
 
-import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
 
@@ -16,6 +15,6 @@ class RecordTaskStatusExecutorOutboundPortImpl implements RecordTaskStatusExecut
     public ExecutionMode findExecutionMode(String executorName) {
         return executorServicesProperties.findExecutor(executorName)
                 .map(executor -> executor.executionMode())
-                .orElseThrow(() -> new InternalException("Executor " + executorName + " is not declared"));
+                .orElse(null);
     }
 }

@@ -72,7 +72,9 @@ class RequestTaskExecution implements UseCase {
             task.setProviderRunId(providerRunId);
             Activity saved = persistencePort.save(activity);
             Task requested = resolveTask(saved);
-            notificationPort.emitTaskExecutionRequested(saved, requested);
+            // Asked once the run id is stored: an approval must never find the request missing.
+            // If the emit fails, the task stays PENDING and the CLI can ask again.
+            transactionalPort.afterCommit(() -> notificationPort.emitTaskExecutionRequested(saved, requested));
             presenter.presentTaskExecutionRequested(saved);
         });
     }

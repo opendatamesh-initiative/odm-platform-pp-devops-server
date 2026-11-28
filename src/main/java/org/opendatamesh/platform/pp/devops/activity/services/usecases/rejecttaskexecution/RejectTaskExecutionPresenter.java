@@ -2,6 +2,6 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.rejecttas
 
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 
-interface RejectTaskExecutionPresenter {
+public interface RejectTaskExecutionPresenter {
     void presentTaskExecutionRejected(Task task);
 }

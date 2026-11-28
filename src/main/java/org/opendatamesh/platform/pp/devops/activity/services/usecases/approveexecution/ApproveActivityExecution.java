@@ -49,12 +49,15 @@ class ApproveActivityExecution implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        Activity activity = approvePendingActivity();
-        if (activity == null) {
+        Approval approval = transactionalPort.doInTransactionWithResults(ignored -> approvePendingActivity(), null);
+        if (approval == null) {
             return;
         }
-        presenter.presentActivityExecutionApproved(activity);
-        advancePort.advanceActivity(activity.getUuid());
+        if (approval.approvedNow()) {
+            presenter.presentActivityExecutionApproved(approval.activity());
+        }
+        // Also on a repeated approval of a running activity: if the first advance failed, this one completes it.
+        advancePort.advanceActivity(approval.activity().getUuid());
     }
 
     private void validateCommand() {
@@ -63,16 +66,20 @@ class ApproveActivityExecution implements UseCase {
         }
     }
 
-    private Activity approvePendingActivity() {
-        return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findForUpdate(command.activityUuid());
-            if (activity.getStatus() != ExecutionStatus.PENDING) {
-                return null;
-            }
-            activity.setStatus(ExecutionStatus.RUNNING);
-            activity.setStartedAt(now());
-            return persistencePort.save(activity);
-        }, null);
+    private Approval approvePendingActivity() {
+        Activity activity = persistencePort.findForUpdate(command.activityUuid());
+        if (activity.getStatus() == ExecutionStatus.RUNNING) {
+            return new Approval(activity, false);
+        }
+        if (activity.getStatus() != ExecutionStatus.PENDING) {
+            return null;
+        }
+        activity.setStatus(ExecutionStatus.RUNNING);
+        activity.setStartedAt(now());
+        return new Approval(persistencePort.save(activity), true);
+    }
+
+    private record Approval(Activity activity, boolean approvedNow) {
     }
 
     private static Timestamp now() {

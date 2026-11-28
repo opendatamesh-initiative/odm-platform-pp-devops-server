@@ -16,10 +16,11 @@ import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientRequestFailedException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientTransportException;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientUnreadableResponseException;
-import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorRunStatus;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
+import org.opendatamesh.platform.pp.devops.executor.RunFollowRegistry;
+import org.opendatamesh.platform.pp.devops.utils.entities.StoredTextLimits;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,20 +41,33 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
     private final ExecutorServicesProperties executorServicesProperties;
     private final ExecutorClientFactory executorClientFactory;
     private final TaskMapper taskMapper;
+    private final RunFollowRegistry runFollowRegistry;
 
     ExecuteTaskExecutorOutboundPortImpl(ExecutorServicesProperties executorServicesProperties,
                                         ExecutorClientFactory executorClientFactory,
-                                        TaskMapper taskMapper) {
+                                        TaskMapper taskMapper,
+                                        RunFollowRegistry runFollowRegistry) {
         this.executorServicesProperties = executorServicesProperties;
         this.executorClientFactory = executorClientFactory;
         this.taskMapper = taskMapper;
+        this.runFollowRegistry = runFollowRegistry;
     }
 
     @Override
     public ExecutionMode findExecutionMode(String executorName) {
         return executorServicesProperties.findExecutor(executorName)
                 .map(executor -> executor.executionMode())
-                .orElseThrow(() -> new NotFoundException("Executor " + executorName + " is not declared"));
+                .orElse(null);
+    }
+
+    @Override
+    public void followStarted(String taskUuid) {
+        runFollowRegistry.followStarted(taskUuid);
+    }
+
+    @Override
+    public void followEnded(String taskUuid) {
+        runFollowRegistry.followEnded(taskUuid);
     }
 
     @Override
@@ -67,7 +81,7 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
         if (result == null || !StringUtils.hasText(result.getProviderRunId())) {
             throw new InternalException("Executor " + task.getExecutorName() + " returned no provider run id");
         }
-        return result.getProviderRunId();
+        return result.getProviderRunId().trim();
     }
 
     @Override
@@ -108,7 +122,8 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
             return Optional.empty();
         }
         TaskLog log = new TaskLog();
-        log.setContent(logs.getContent());
+        // A pipeline log can be far longer than a stored log: keep its end, so the outcome is always recorded.
+        log.setContent(StoredTextLimits.fitLogContent(logs.getContent()));
         if (logs.getGeneratedAt() == null) {
             log.setGeneratedAt(new Timestamp(System.currentTimeMillis()));
         } else {
@@ -121,6 +136,10 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
     public String describeFailure(Task task, ExecutorCall call, RuntimeException failure) {
         String action = call.action();
         String executor = "Executor " + task.getExecutorName();
+        if (waitedForAFreeConnection(failure)) {
+            return "DevOps had no free connection to executor " + task.getExecutorName() + " to " + action
+                    + " in time: the request was not sent, the executor was not contacted.";
+        }
         if (failure instanceof ClientTransportException transportFailure) {
             String message = excerpt(transportFailure.getResponseBody());
             String detail = message.isEmpty() ? "" : " (" + message + ")";
@@ -177,6 +196,16 @@ class ExecuteTaskExecutorOutboundPortImpl implements ExecuteTaskExecutorOutbound
             }
             if (cause instanceof java.net.SocketException) {
                 // Connection reset or broken pipe on an established connection.
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** DevOps's own connection pool had no free connection: the request never left DevOps. */
+    private static boolean waitedForAFreeConnection(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.apache.hc.core5.http.ConnectionRequestTimeoutException) {
                 return true;
             }
         }

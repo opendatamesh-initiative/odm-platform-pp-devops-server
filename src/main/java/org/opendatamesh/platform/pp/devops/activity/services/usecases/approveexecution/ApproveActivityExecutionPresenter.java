@@ -2,6 +2,6 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.approveex
 
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 
-interface ApproveActivityExecutionPresenter {
+public interface ApproveActivityExecutionPresenter {
     void presentActivityExecutionApproved(Activity activity);
 }

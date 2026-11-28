@@ -2,6 +2,6 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.rejectexe
 
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 
-interface RejectActivityExecutionPresenter {
+public interface RejectActivityExecutionPresenter {
     void presentActivityExecutionRejected(Activity activity);
 }

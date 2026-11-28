@@ -4,6 +4,7 @@ import org.opendatamesh.platform.pp.devops.activity.services.core.ActivityServic
 import org.opendatamesh.platform.pp.devops.activity.services.usecases.advance.AdvanceActivityFactory;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
+import org.opendatamesh.platform.pp.devops.executor.RunFollowRegistry;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskMapper;
 import org.opendatamesh.platform.pp.devops.utils.services.EntityInitAndDetachService;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
@@ -28,6 +29,8 @@ public class ExecuteTaskFactory {
     private EntityInitAndDetachService entityInitAndDetachService;
     @Autowired
     private AdvanceActivityFactory advanceActivityFactory;
+    @Autowired
+    private RunFollowRegistry runFollowRegistry;
 
     public UseCase buildExecuteTask(ExecuteTaskCommand command, ExecuteTaskPresenter presenter) {
         return new ExecuteTask(
@@ -38,7 +41,8 @@ public class ExecuteTaskFactory {
                 new ExecuteTaskExecutorOutboundPortImpl(
                         executorServicesProperties,
                         executorClientFactory,
-                        taskMapper
+                        taskMapper,
+                        runFollowRegistry
                 ),
                 new ExecuteTaskAdvanceActivityOutboundPortImpl(advanceActivityFactory),
                 transactionalOutboundPort

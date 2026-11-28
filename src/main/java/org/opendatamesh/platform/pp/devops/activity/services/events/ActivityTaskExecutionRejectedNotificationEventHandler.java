@@ -1,4 +1,7 @@
-package org.opendatamesh.platform.pp.devops.activity.services.usecases.rejecttaskexecution;
+package org.opendatamesh.platform.pp.devops.activity.services.events;
+
+import org.opendatamesh.platform.pp.devops.activity.services.usecases.rejecttaskexecution.RejectTaskExecutionCommand;
+import org.opendatamesh.platform.pp.devops.activity.services.usecases.rejecttaskexecution.RejectTaskExecutionFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;

@@ -6,6 +6,7 @@ import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 import org.opendatamesh.platform.pp.devops.activity.entities.TaskLog;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;
 import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
+import org.opendatamesh.platform.pp.devops.utils.entities.StoredTextLimits;
 import org.opendatamesh.platform.pp.devops.executor.ExecutionMode;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorRunStatus;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
@@ -22,7 +23,7 @@ import java.util.Optional;
 
 /**
  * Full-control happy path. Brackets run only while the Policy service is
-         * inactive.
+ * inactive.
  * 
  * <pre>
  * ExecuteActivity
@@ -75,28 +76,36 @@ class ExecuteTask implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        Task task = startTaskExecution();
-        if (task == null) {
+        StartedTask started = transactionalPort.doInTransactionWithResults(ignored -> startTaskExecution(), null);
+        if (started == null) {
             return;
         }
-        if (executorPort.findExecutionMode(task.getExecutorName()) != ExecutionMode.FULL_CONTROL) {
-            // not full control, skip execution
+        Task task = started.task();
+        if (started.ended()) {
+            presenter.presentTaskExecuted(task);
+            advancePort.advanceActivity(task.getActivity().getUuid());
+            return;
+        }
+        if (started.mode() != ExecutionMode.FULL_CONTROL) {
+            // Instrumented: the CLI reports logs, results and the final status.
             presenter.presentTaskExecuted(task);
             return;
         }
-        // Replace ${activity.results.task.path} from results the CLI stored during earlier pipelines.
-        // Only a succeeded task contributes. Stored values stay unchanged.
-        Map<String, String> resolved = parametersPort.resolvePipelineParameters(task);
-        if (!startRun(task, resolved)) {
-            return;
+        // Cancel reads this to know that the outcome of this run will be recorded here.
+        executorPort.followStarted(task.getUuid());
+        try {
+            if (startRun(task)) {
+                // This pipeline uploads its own task results before the executor reports a terminal status.
+                RunOutcome outcome = followRunUntilItEnds(task);
+                List<TaskLog> logs = new ArrayList<>();
+                readRunLogOrEmpty(task).ifPresent(logs::add);
+                // A failure DevOps decided (unreadable status, poll limit) gets its reason in the task logs.
+                outcome.failureReason().ifPresent(reason -> logs.add(failureLog(reason)));
+                recordRunOutcome(task, outcome.status(), logs);
+            }
+        } finally {
+            executorPort.followEnded(task.getUuid());
         }
-        // This pipeline uploads its own task results before the executor reports a terminal status.
-        RunOutcome outcome = followRunUntilItEnds(task);
-        List<TaskLog> logs = new ArrayList<>();
-        readRunLogOrEmpty(task).ifPresent(logs::add);
-        // A failure DevOps decided (unreadable status, poll limit) gets its reason in the task logs.
-        outcome.failureReason().ifPresent(reason -> logs.add(failureLog(reason)));
-        recordRunOutcome(task, outcome.status(), logs);
         presenter.presentTaskExecuted(task);
         advancePort.advanceActivity(task.getActivity().getUuid());
     }
@@ -110,53 +119,94 @@ class ExecuteTask implements UseCase {
         }
     }
 
-    private Task startTaskExecution() {
-        return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findForUpdate(command.activityUuid());
-            if (activity.getStatus() != ExecutionStatus.RUNNING) {
-                return null;
-            }
-            Task task = findTask(activity, command.taskUuid());
-            if (task.getStatus() != ExecutionStatus.PENDING) {
-                return null;
-            }
-            task.setStatus(ExecutionStatus.RUNNING);
-            task.setStartedAt(now());
-            persistencePort.save(activity);
+    /**
+     * Sets the pending task to RUNNING. A task whose executor is no longer declared cannot run:
+     * it is set to FAILED at once, with the reason in its logs, so the activity can close.
+     */
+    private StartedTask startTaskExecution() {
+        Activity activity = persistencePort.findForUpdate(command.activityUuid());
+        if (activity.getStatus() != ExecutionStatus.RUNNING) {
+            return null;
+        }
+        Task task = findTask(activity, command.taskUuid());
+        if (task.getStatus() == ExecutionStatus.SUCCEEDED || task.getStatus() == ExecutionStatus.FAILED
+                || task.getStatus() == ExecutionStatus.CANCELED) {
+            // A repeated approval of a task that has ended: advance again, in case the first advance failed.
             task.getActivity().getUuid();
-            task.getExecutorParameters();
-            task.getPipelineParameters();
-            return task;
-        }, null);
+            return new StartedTask(task, null, true);
+        }
+        if (task.getStatus() != ExecutionStatus.PENDING) {
+            return null;
+        }
+        ExecutionMode mode = executorPort.findExecutionMode(task.getExecutorName());
+        Timestamp now = now();
+        task.setStartedAt(now);
+        if (mode == null) {
+            TaskLog reason = failureLog("The task is marked FAILED because executor " + task.getExecutorName()
+                    + " is no longer declared in the DevOps configuration.");
+            reason.setTask(task);
+            if (task.getLogs() == null) {
+                task.setLogs(new ArrayList<>());
+            }
+            task.getLogs().add(reason);
+            task.setStatus(ExecutionStatus.FAILED);
+            task.setFinishedAt(now);
+        } else {
+            task.setStatus(ExecutionStatus.RUNNING);
+        }
+        persistencePort.save(activity);
+        task.getActivity().getUuid();
+        task.getExecutorParameters();
+        task.getPipelineParameters();
+        task.getLogs().size();
+        return new StartedTask(task, mode, mode == null);
     }
 
-    private boolean startRun(Task task, Map<String, String> resolved) {
+    /**
+     * Starts the run on the executor and stores its provider run id.
+     * Returns false when the task could not start; its failure is then recorded.
+     */
+    private boolean startRun(Task task) {
         String providerRunId;
         try {
+            // Replace ${activity.results.task.path} from results the CLI stored during earlier pipelines.
+            // Only a succeeded task contributes. Stored values stay unchanged.
+            Map<String, String> resolved = parametersPort.resolvePipelineParameters(task);
             providerRunId = executorPort.startRun(task, resolved);
         } catch (RuntimeException startFailed) {
             String reason = executorPort.describeFailure(task, ExecuteTaskExecutorOutboundPort.ExecutorCall.START, startFailed);
             logger.warn("Executor start failed for task {} of activity {}: {}",
                     task.getUuid(), task.getActivity().getUuid(), reason, startFailed);
-            failRunningTask(task, reason);
+            recordRunOutcome(task, ExecutorRunStatus.FAILED, List.of(failureLog(reason)));
             return false;
         }
         if (!StringUtils.hasText(providerRunId)) {
             String reason = "Executor " + task.getExecutorName() + " returned no provider run id when starting the task";
             logger.warn("{} (task {})", reason, task.getUuid());
-            failRunningTask(task, reason);
+            recordRunOutcome(task, ExecutorRunStatus.FAILED, List.of(failureLog(reason)));
+            return false;
+        }
+        if (providerRunId.length() > StoredTextLimits.PROVIDER_RUN_ID_MAX_CHARS) {
+            String reason = "The task is marked FAILED because executor " + task.getExecutorName()
+                    + " returned a provider run id longer than " + StoredTextLimits.PROVIDER_RUN_ID_MAX_CHARS
+                    + " characters, which DevOps cannot store. The run may have started in the tool and is not tracked: "
+                    + excerpt(providerRunId);
+            logger.warn("{} (task {})", reason, task.getUuid());
+            recordRunOutcome(task, ExecutorRunStatus.FAILED, List.of(failureLog(reason)));
             return false;
         }
         logger.info("Executor {} started task {} of activity {} with provider run id {}",
                 task.getExecutorName(), task.getUuid(), task.getActivity().getUuid(), providerRunId);
-        recordProviderRunId(task, providerRunId);
+        try {
+            recordProviderRunId(task, providerRunId);
+        } catch (RuntimeException storeFailed) {
+            String reason = "The task is marked FAILED because DevOps could not store provider run id " + providerRunId
+                    + " of executor " + task.getExecutorName() + ". The run may still be going on in the tool and is not tracked.";
+            logger.error("{} (task {})", reason, task.getUuid(), storeFailed);
+            recordRunOutcome(task, ExecutorRunStatus.FAILED, List.of(failureLog(reason)));
+            return false;
+        }
         return true;
-    }
-
-    private void failRunningTask(Task task, String reason) {
-        recordRunOutcome(task, ExecutorRunStatus.FAILED, List.of(failureLog(reason)));
-        presenter.presentTaskExecuted(task);
-        advancePort.advanceActivity(task.getActivity().getUuid());
     }
 
     private void recordProviderRunId(Task task, String providerRunId) {
@@ -223,7 +273,22 @@ class ExecuteTask implements UseCase {
         }
     }
 
+    /**
+     * Stores the terminal status of the run with its logs. When the logs cannot be stored, the status is
+     * stored anyway with a short reason, so a run never stays RUNNING because of what it printed.
+     */
     private void recordRunOutcome(Task task, ExecutorRunStatus runStatus, List<TaskLog> logs) {
+        try {
+            storeRunOutcome(task, runStatus, logs);
+        } catch (RuntimeException storeFailed) {
+            logger.error("Could not store the outcome of task {} with its logs; storing it without them",
+                    task.getUuid(), storeFailed);
+            storeRunOutcome(task, runStatus, List.of(failureLog("DevOps could not store the logs of this run: "
+                    + excerpt(storeFailed.getMessage()))));
+        }
+    }
+
+    private void storeRunOutcome(Task task, ExecutorRunStatus runStatus, List<TaskLog> logs) {
         Timestamp finishedAt = now();
         ExecutionStatus status = toExecutionStatus(runStatus);
         boolean recorded = Boolean.TRUE.equals(transactionalPort.doInTransactionWithResults(ignored -> {
@@ -232,11 +297,12 @@ class ExecuteTask implements UseCase {
             if (persisted.getStatus() != ExecutionStatus.RUNNING) {
                 return false;
             }
+            if (persisted.getLogs() == null) {
+                persisted.setLogs(new ArrayList<>());
+            }
             for (TaskLog entry : logs) {
+                entry.setUuid(null);
                 entry.setTask(persisted);
-                if (persisted.getLogs() == null) {
-                    persisted.setLogs(new ArrayList<>());
-                }
                 persisted.getLogs().add(entry);
             }
             persisted.setStatus(status);
@@ -254,11 +320,23 @@ class ExecuteTask implements UseCase {
         task.setFinishedAt(finishedAt);
     }
 
+    private static String excerpt(String text) {
+        if (text == null) {
+            return "";
+        }
+        String clean = StoredTextLimits.withoutNulCharacters(text).strip();
+        return clean.length() > 1000 ? clean.substring(0, 1000) + "…" : clean;
+    }
+
     private static TaskLog failureLog(String reason) {
         TaskLog log = new TaskLog();
-        log.setContent(reason);
+        log.setContent(StoredTextLimits.fitLogContent(reason));
         log.setGeneratedAt(now());
         return log;
+    }
+
+    /** A task set to RUNNING with its executor's mode, or a task that has ended (now, or before) and only needs an advance. */
+    private record StartedTask(Task task, ExecutionMode mode, boolean ended) {
     }
 
     /** The terminal status of a run, with the reason when DevOps itself decided the failure. */

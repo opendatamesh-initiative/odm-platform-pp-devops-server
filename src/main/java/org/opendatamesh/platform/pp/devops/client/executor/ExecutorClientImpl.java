@@ -36,11 +36,11 @@ class ExecutorClientImpl implements ExecutorClient {
 
     @Override
     public void cancelTask(ExecutorTaskCancelCommandRes command) {
-        restUtils.genericPost(
+        // The answer of a cancel carries nothing DevOps uses: any 2xx means the executor accepted it.
+        restUtils.postIgnoringResponseBody(
                 address + "/api/v2/up/executor/tasks/cancel",
                 secretHeaders,
-                command,
-                Object.class
+                command
         );
     }
 

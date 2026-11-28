@@ -1,4 +1,7 @@
-package org.opendatamesh.platform.pp.devops.activity.services.usecases.executetask;
+package org.opendatamesh.platform.pp.devops.activity.services.events;
+
+import org.opendatamesh.platform.pp.devops.activity.services.usecases.executetask.ExecuteTaskCommand;
+import org.opendatamesh.platform.pp.devops.activity.services.usecases.executetask.ExecuteTaskFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;

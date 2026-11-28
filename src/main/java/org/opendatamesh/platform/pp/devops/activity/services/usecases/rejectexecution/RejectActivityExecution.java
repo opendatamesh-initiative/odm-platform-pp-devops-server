@@ -36,7 +36,7 @@ class RejectActivityExecution implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        Activity activity = rejectPendingActivity();
+        Activity activity = transactionalPort.doInTransactionWithResults(ignored -> rejectPendingActivity(), null);
         if (activity == null) {
             return;
         }
@@ -51,24 +51,23 @@ class RejectActivityExecution implements UseCase {
     }
 
     private Activity rejectPendingActivity() {
-        return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findForUpdate(command.activityUuid());
-            if (activity.getStatus() != ExecutionStatus.PENDING) {
-                return null;
+        Activity activity = persistencePort.findForUpdate(command.activityUuid());
+        if (activity.getStatus() != ExecutionStatus.PENDING) {
+            return null;
+        }
+        Timestamp finishedAt = now();
+        if (activity.getTasks() != null) {
+            for (Task task : activity.getTasks()) {
+                task.setStatus(ExecutionStatus.CANCELED);
+                task.setFinishedAt(finishedAt);
             }
-            Timestamp finishedAt = now();
-            if (activity.getTasks() != null) {
-                for (Task task : activity.getTasks()) {
-                    task.setStatus(ExecutionStatus.CANCELED);
-                    task.setFinishedAt(finishedAt);
-                }
-            }
-            activity.setStatus(ExecutionStatus.FAILED);
-            activity.setFinishedAt(finishedAt);
-            Activity saved = persistencePort.save(activity);
-            notificationPort.emitActivityFailed(saved);
-            return saved;
-        }, null);
+        }
+        activity.setStatus(ExecutionStatus.FAILED);
+        activity.setFinishedAt(finishedAt);
+        Activity saved = persistencePort.save(activity);
+        // Announced once the failure is stored.
+        transactionalPort.afterCommit(() -> notificationPort.emitActivityFailed(saved));
+        return saved;
     }
 
     private static Timestamp now() {

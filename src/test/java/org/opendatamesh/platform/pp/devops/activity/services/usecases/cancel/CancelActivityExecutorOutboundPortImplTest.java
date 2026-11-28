@@ -15,6 +15,7 @@ import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTas
 import org.opendatamesh.platform.pp.devops.client.executor.resources.ExecutorTaskStatusRes;
 import org.opendatamesh.platform.pp.devops.exceptions.client.ClientException;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
+import org.opendatamesh.platform.pp.devops.executor.RunFollowRegistry;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskMapperImpl;
 
 import java.util.ArrayList;
@@ -24,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Cancel-run outcome of the executor port: which executor answers mean the run has already ended,
- * and which mean the cancel could not be delivered.
+ * and which mean the cancel could not be delivered. A 404 is checked against the run status.
  */
 class CancelActivityExecutorOutboundPortImplTest {
 
@@ -52,20 +53,56 @@ class CancelActivityExecutorOutboundPortImplTest {
     /**
      * Feature: Cancel run through the executor
      *
-     * Scenario: A 404 from the executor means the run is already finished
+     * Scenario: A 404 to the cancel, with a run the executor reports as ended, means the run is already finished
      *   Given a running task whose executor answers 404 to the cancel
+     *   And reports the run as SUCCEEDED
      *   When DevOps cancels the run
-     *   Then the executor is called once
+     *   Then the executor cancel is called once
      *   And the result is ALREADY_FINISHED
      */
     @Test
-    void whenExecutorAnswers404ThenAlreadyFinished() throws Exception {
-        FakeExecutorClient client = new FakeExecutorClient(404);
+    void whenExecutorAnswers404AndRunHasEndedThenAlreadyFinished() throws Exception {
+        FakeExecutorClient client = new FakeExecutorClient(404).withStatus("SUCCEEDED");
 
         CancelRunResult result = port(client).cancelRun(runningTask());
 
         assertThat(result).isEqualTo(CancelRunResult.ALREADY_FINISHED);
         assertThat(client.cancelCalls()).hasSize(1);
+    }
+
+    /**
+     * Feature: Cancel run through the executor
+     *
+     * Scenario: A 404 to the cancel while the run is still running is a failed cancel, not a finished run
+     *   Given a running task whose executor answers 404 to the cancel (for example, no cancel route)
+     *   And still reports the run as RUNNING
+     *   When DevOps cancels the run
+     *   Then the result is UNREACHABLE
+     */
+    @Test
+    void whenExecutorAnswers404ButRunIsStillRunningThenUnreachable() throws Exception {
+        FakeExecutorClient client = new FakeExecutorClient(404).withStatus("RUNNING");
+
+        CancelRunResult result = port(client).cancelRun(runningTask());
+
+        assertThat(result).isEqualTo(CancelRunResult.UNREACHABLE);
+    }
+
+    /**
+     * Feature: Cancel run through the executor
+     *
+     * Scenario: A run the executor does not know at all is already finished
+     *   Given a running task whose executor answers 404 to the cancel and to the status read
+     *   When DevOps cancels the run
+     *   Then the result is ALREADY_FINISHED
+     */
+    @Test
+    void whenExecutorAnswers404ToCancelAndStatusThenAlreadyFinished() throws Exception {
+        FakeExecutorClient client = new FakeExecutorClient(404).withStatusError(404);
+
+        CancelRunResult result = port(client).cancelRun(runningTask());
+
+        assertThat(result).isEqualTo(CancelRunResult.ALREADY_FINISHED);
     }
 
     /**
@@ -111,7 +148,8 @@ class CancelActivityExecutorOutboundPortImplTest {
 
     private static CancelActivityExecutorOutboundPortImpl port(FakeExecutorClient client) {
         ExecutorClientFactory factory = (executorName, activityUuid) -> client;
-        return new CancelActivityExecutorOutboundPortImpl(factory, new ExecutorServicesProperties(), new TaskMapperImpl());
+        return new CancelActivityExecutorOutboundPortImpl(factory, new ExecutorServicesProperties(), new TaskMapperImpl(),
+                new RunFollowRegistry());
     }
 
     private static Task runningTask() throws Exception {
@@ -133,9 +171,21 @@ class CancelActivityExecutorOutboundPortImplTest {
 
         private final Integer cancelStatus;
         private final List<ExecutorTaskCancelCommandRes> cancelCalls = new ArrayList<>();
+        private String runStatus;
+        private Integer statusError;
 
         FakeExecutorClient(Integer cancelStatus) {
             this.cancelStatus = cancelStatus;
+        }
+
+        FakeExecutorClient withStatus(String status) {
+            this.runStatus = status;
+            return this;
+        }
+
+        FakeExecutorClient withStatusError(int status) {
+            this.statusError = status;
+            return this;
         }
 
         List<ExecutorTaskCancelCommandRes> cancelCalls() {
@@ -157,7 +207,15 @@ class CancelActivityExecutorOutboundPortImplTest {
 
         @Override
         public ExecutorTaskStatusRes getTaskStatus(ExecutorTaskStatusCommandRes command) {
-            throw new UnsupportedOperationException();
+            if (statusError != null) {
+                throw new ClientException(statusError, "status refused");
+            }
+            if (runStatus == null) {
+                throw new UnsupportedOperationException();
+            }
+            ExecutorTaskStatusRes status = new ExecutorTaskStatusRes();
+            status.setStatus(runStatus);
+            return status;
         }
 
         @Override

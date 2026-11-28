@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.opendatamesh.platform.pp.devops.activity.entities.Activity;
 import org.opendatamesh.platform.pp.devops.activity.entities.ExecutionStatus;
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
+import org.opendatamesh.platform.pp.devops.activity.entities.TaskLog;
 import org.opendatamesh.platform.pp.devops.exceptions.BadRequestException;
 import org.opendatamesh.platform.pp.devops.exceptions.InternalException;
 import org.opendatamesh.platform.pp.devops.exceptions.NotFoundException;
@@ -25,6 +26,9 @@ import java.util.List;
  * Record Task Status does, and this class only reads until the activity is terminal.
  * When every running task is full control, a task that has already left running may advance the activity,
  * and the wait still advances an open activity that has no running task.
+ * A running full-control task that this instance no longer follows (after a restart, or after its follower
+ * stopped on an error) is closed by the cancel itself, with the reason in its logs; so is a running task whose
+ * executor is no longer declared.
  */
 class CancelActivity implements UseCase {
 
@@ -57,7 +61,8 @@ class CancelActivity implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        List<String> runningTaskUuids = cancelTasksThatHaveNotStarted();
+        List<String> runningTaskUuids = transactionalPort.doInTransactionWithResults(
+                ignored -> cancelTasksThatHaveNotStarted(), null);
         if (runningTaskUuids.isEmpty()) {
             closeAndPresent();
             return;
@@ -79,22 +84,20 @@ class CancelActivity implements UseCase {
     }
 
     private List<String> cancelTasksThatHaveNotStarted() {
-        return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findForUpdate(command.activityUuid());
-            refuseWhenAlreadyTerminated(activity);
-            Timestamp finishedAt = now();
-            List<String> runningTaskUuids = new ArrayList<>();
-            for (Task task : tasksInSortOrder(activity)) {
-                if (task.getStatus() == ExecutionStatus.PENDING) {
-                    task.setStatus(ExecutionStatus.CANCELED);
-                    task.setFinishedAt(finishedAt);
-                } else if (task.getStatus() == ExecutionStatus.RUNNING) {
-                    runningTaskUuids.add(task.getUuid());
-                }
+        Activity activity = persistencePort.findForUpdate(command.activityUuid());
+        refuseWhenAlreadyTerminated(activity);
+        Timestamp finishedAt = now();
+        List<String> runningTaskUuids = new ArrayList<>();
+        for (Task task : tasksInSortOrder(activity)) {
+            if (task.getStatus() == ExecutionStatus.PENDING) {
+                task.setStatus(ExecutionStatus.CANCELED);
+                task.setFinishedAt(finishedAt);
+            } else if (task.getStatus() == ExecutionStatus.RUNNING) {
+                runningTaskUuids.add(task.getUuid());
             }
-            persistencePort.save(activity);
-            return runningTaskUuids;
-        }, null);
+        }
+        persistencePort.save(activity);
+        return runningTaskUuids;
     }
 
     private void refuseWhenAlreadyTerminated(Activity activity) {
@@ -114,9 +117,10 @@ class CancelActivity implements UseCase {
         List<ClassifiedRunningTask> classified = new ArrayList<>();
         for (String taskUuid : taskUuids) {
             TaskSnapshot task = readTask(taskUuid);
-            RunningTaskKind kind = executorPort.findExecutionMode(task.executorName()) == ExecutionMode.INSTRUMENTED
-                    ? RunningTaskKind.INSTRUMENTED
-                    : RunningTaskKind.FULL_CONTROL;
+            ExecutionMode mode = executorPort.findExecutionMode(task.executorName());
+            RunningTaskKind kind = mode == ExecutionMode.INSTRUMENTED ? RunningTaskKind.INSTRUMENTED
+                    : mode == ExecutionMode.FULL_CONTROL ? RunningTaskKind.FULL_CONTROL
+                    : RunningTaskKind.UNDECLARED_EXECUTOR;
             classified.add(new ClassifiedRunningTask(taskUuid, kind));
         }
         return classified;
@@ -126,6 +130,9 @@ class CancelActivity implements UseCase {
         switch (task.kind()) {
             case INSTRUMENTED -> leaveInstrumentedTaskRunning();
             case FULL_CONTROL -> stopFullControlTask(task.taskUuid(), close);
+            case UNDECLARED_EXECUTOR -> closeUnfollowedTask(task.taskUuid(), ExecutionStatus.FAILED,
+                    "The task is marked FAILED by the cancel: its executor is no longer declared in the DevOps"
+                            + " configuration, so DevOps could not ask it to stop the run.");
         }
     }
 
@@ -133,21 +140,64 @@ class CancelActivity implements UseCase {
         // The task stays RUNNING. This cancel does not open an executor client and does not advance.
     }
 
+    /**
+     * Asks the executor to stop the run. When this instance is no longer following the run (after a restart,
+     * or after its follower stopped on an error), nobody else will record how it ended, so the cancel closes it.
+     */
     private void stopFullControlTask(String taskUuid, CancelClose close) {
         TaskSnapshot task = waitForProviderRunId(taskUuid);
-        if (task.status() == ExecutionStatus.RUNNING && !StringUtils.hasText(task.providerRunId())) {
-            throw new InternalException("Activity " + command.activityUuid() + " running task could not be canceled");
-        }
-        if (task.status() == ExecutionStatus.RUNNING) {
-            CancelRunResult result = executorPort.cancelRun(task.asTask(command.activityUuid()));
-            if (result == CancelRunResult.UNREACHABLE) {
-                throw new InternalException("Activity " + command.activityUuid() + " running task could not be canceled");
+        if (task.status() != ExecutionStatus.RUNNING) {
+            if (close == CancelClose.CANCEL_MAY_ADVANCE && !isTerminal(loadActivity(command.activityUuid()).getStatus())) {
+                advancePort.advanceActivity(command.activityUuid());
             }
             return;
         }
-        if (close == CancelClose.CANCEL_MAY_ADVANCE && !isTerminal(loadActivity(command.activityUuid()).getStatus())) {
-            advancePort.advanceActivity(command.activityUuid());
+        boolean followed = executorPort.isRunFollowed(taskUuid);
+        if (!StringUtils.hasText(task.providerRunId())) {
+            if (followed) {
+                throw new InternalException("Activity " + command.activityUuid() + " running task could not be canceled");
+            }
+            closeUnfollowedTask(taskUuid, ExecutionStatus.FAILED, "The task is marked FAILED by the cancel: it was"
+                    + " RUNNING without a provider run id and DevOps was no longer following it.");
+            return;
         }
+        CancelRunResult result = executorPort.cancelRun(task.asTask(command.activityUuid()));
+        if (result == CancelRunResult.UNREACHABLE) {
+            throw new InternalException("Activity " + command.activityUuid() + " running task could not be canceled");
+        }
+        if (followed) {
+            return;
+        }
+        if (result == CancelRunResult.POSTED) {
+            closeUnfollowedTask(taskUuid, ExecutionStatus.CANCELED, "The task is marked CANCELED by the cancel: the"
+                    + " executor accepted to stop run " + task.providerRunId() + ", which DevOps was no longer following.");
+        } else {
+            closeUnfollowedTask(taskUuid, ExecutionStatus.FAILED, "The task is marked FAILED by the cancel: the executor"
+                    + " reports that run " + task.providerRunId() + " has already ended, but DevOps was no longer"
+                    + " following it, so its real outcome was not recorded.");
+        }
+    }
+
+    private void closeUnfollowedTask(String taskUuid, ExecutionStatus status, String reason) {
+        transactionalPort.doInTransaction(() -> {
+            Activity activity = persistencePort.findForUpdate(command.activityUuid());
+            Task task = findTask(activity, taskUuid);
+            if (task.getStatus() != ExecutionStatus.RUNNING) {
+                return;
+            }
+            Timestamp finishedAt = now();
+            TaskLog log = new TaskLog();
+            log.setContent(reason);
+            log.setGeneratedAt(finishedAt);
+            log.setTask(task);
+            if (task.getLogs() == null) {
+                task.setLogs(new ArrayList<>());
+            }
+            task.getLogs().add(log);
+            task.setStatus(status);
+            task.setFinishedAt(finishedAt);
+            persistencePort.save(activity);
+        });
     }
 
     private TaskSnapshot waitForProviderRunId(String taskUuid) {
@@ -185,8 +235,9 @@ class CancelActivity implements UseCase {
         throw new InternalException("Activity " + command.activityUuid() + " did not reach a terminal status");
     }
 
+    /** A committed, detached copy: read-committed, so these reads never abort Execute Task's serializable writes. */
     private Activity loadActivity(String activityUuid) {
-        return persistencePort.findDetached(activityUuid);
+        return transactionalPort.doInReadCommittedTransaction(persistencePort::findDetached, activityUuid);
     }
 
     private TaskSnapshot readTask(String taskUuid) {
@@ -239,7 +290,8 @@ class CancelActivity implements UseCase {
 
     private enum RunningTaskKind {
         INSTRUMENTED,
-        FULL_CONTROL
+        FULL_CONTROL,
+        UNDECLARED_EXECUTOR
     }
 
     private enum CancelClose {

@@ -31,6 +31,8 @@ class RecordTaskResults implements UseCase {
     private String dataProductVersionNumber;
     private String activityName;
     private String taskName;
+    /** The task matched by provider run id: it is used as is, never looked up again by name. */
+    private Task taskMatchedByRunId;
     private List<TaskResult> results;
 
     RecordTaskResults(RecordTaskResultsCommand command,
@@ -130,6 +132,9 @@ class RecordTaskResults implements UseCase {
     }
 
     private Task resolveTask(Activity activity) {
+        if (taskMatchedByRunId != null) {
+            return taskMatchedByRunId;
+        }
         List<Task> matches = new ArrayList<>();
         if (activity.getTasks() != null) {
             for (Task task : activity.getTasks()) {
@@ -184,6 +189,7 @@ class RecordTaskResults implements UseCase {
         ambiguousRunId(candidates);
         RunningTaskMatch match = candidates.get(0);
         taskName = match.task().getName();
+        taskMatchedByRunId = match.task();
         return match.activity();
     }
 

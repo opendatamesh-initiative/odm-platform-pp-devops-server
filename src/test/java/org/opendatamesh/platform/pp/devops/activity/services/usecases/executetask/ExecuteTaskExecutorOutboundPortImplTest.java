@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** The sentence written in the task logs when an executor call fails. */
 class ExecuteTaskExecutorOutboundPortImplTest {
 
-    private final ExecuteTaskExecutorOutboundPortImpl port = new ExecuteTaskExecutorOutboundPortImpl(null, null, null);
+    private final ExecuteTaskExecutorOutboundPortImpl port = new ExecuteTaskExecutorOutboundPortImpl(null, null, null, null);
 
     @Test
     void whenExecutorAnswersAnErrorThenStatusAndBodyAreShown() {

@@ -32,6 +32,8 @@ class RecordTaskStatus implements UseCase {
     private String dataProductVersionNumber;
     private String activityName;
     private String taskName;
+    /** The task matched by provider run id: it is used as is, never looked up again by name. */
+    private Task taskMatchedByRunId;
     private ExecutionStatus status;
     private String activityUuid;
 
@@ -52,7 +54,8 @@ class RecordTaskStatus implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        recordTerminalStatus();
+        activityUuid = transactionalPort.doInTransactionWithResults(ignored -> recordTerminalStatus(), null);
+        // Also on a repeated report: if the advance failed the first time, the repeat completes it.
         advancePort.advanceActivity(activityUuid);
         presentAdvancedActivity();
     }
@@ -73,16 +76,25 @@ class RecordTaskStatus implements UseCase {
         }
     }
 
-    private void recordTerminalStatus() {
-        activityUuid = transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = loadActivity();
-            Task task = resolveTask(activity);
-            requireInstrumented(task);
-            requireRunning(task);
-            task.setStatus(status);
-            task.setFinishedAt(new Timestamp(System.currentTimeMillis()));
-            return persistencePort.save(activity).getUuid();
-        }, null);
+    /**
+     * Stores the final status. The same final status sent again for a task of an open activity is accepted
+     * without change, so a client that retries after an error does not get stuck on "not RUNNING".
+     */
+    private String recordTerminalStatus() {
+        Activity activity = loadActivity();
+        Task task = resolveTask(activity);
+        requireInstrumented(task);
+        if (task.getStatus() == status && isOpen(activity.getStatus())) {
+            return activity.getUuid();
+        }
+        requireRunning(task);
+        task.setStatus(status);
+        task.setFinishedAt(new Timestamp(System.currentTimeMillis()));
+        return persistencePort.save(activity).getUuid();
+    }
+
+    private static boolean isOpen(ExecutionStatus activityStatus) {
+        return activityStatus == ExecutionStatus.PENDING || activityStatus == ExecutionStatus.RUNNING;
     }
 
     private void presentAdvancedActivity() {
@@ -92,7 +104,8 @@ class RecordTaskStatus implements UseCase {
     }
 
     private void requireInstrumented(Task task) {
-        if (executorPort.findExecutionMode(task.getExecutorName()) != ExecutionMode.INSTRUMENTED) {
+        // A task whose executor is no longer declared is accepted: only its pipeline can still report on it.
+        if (executorPort.findExecutionMode(task.getExecutorName()) == ExecutionMode.FULL_CONTROL) {
             throw new BadRequestException("Task " + taskName + " is not instrumented");
         }
     }
@@ -124,6 +137,9 @@ class RecordTaskStatus implements UseCase {
     }
 
     private Task resolveTask(Activity activity) {
+        if (taskMatchedByRunId != null) {
+            return taskMatchedByRunId;
+        }
         List<Task> matches = new ArrayList<>();
         if (activity.getTasks() != null) {
             for (Task task : activity.getTasks()) {
@@ -172,11 +188,16 @@ class RecordTaskStatus implements UseCase {
     }
 
     private Activity activityOfRunningTask() {
-        List<RunningTaskMatch> candidates = runningTasksWithRunId(persistencePort.findActivitiesByTaskProviderRunId(providerRunId));
+        List<Activity> activities = persistencePort.findActivitiesByTaskProviderRunId(providerRunId);
+        List<RunningTaskMatch> candidates = runningTasksWithRunId(activities);
+        if (candidates.isEmpty()) {
+            candidates = repeatedReports(activities);
+        }
         noRunningTask(candidates);
         ambiguousRunId(candidates);
         RunningTaskMatch match = candidates.get(0);
         taskName = match.task().getName();
+        taskMatchedByRunId = match.task();
         return match.activity();
     }
 
@@ -189,6 +210,23 @@ class RecordTaskStatus implements UseCase {
             for (Task task : activity.getTasks()) {
                 boolean sameName = !StringUtils.hasText(taskName) || taskName.equals(task.getName());
                 if (task.getStatus() == ExecutionStatus.RUNNING && providerRunId.equals(task.getProviderRunId()) && sameName) {
+                    candidates.add(new RunningTaskMatch(activity, task));
+                }
+            }
+        }
+        return candidates;
+    }
+
+    /** Tasks of an open activity that already ended with the status sent: a retry of a report that was stored. */
+    private List<RunningTaskMatch> repeatedReports(List<Activity> activities) {
+        List<RunningTaskMatch> candidates = new ArrayList<>();
+        for (Activity activity : activities) {
+            if (activity.getTasks() == null) {
+                continue;
+            }
+            for (Task task : activity.getTasks()) {
+                boolean sameName = !StringUtils.hasText(taskName) || taskName.equals(task.getName());
+                if (task.getStatus() == status && providerRunId.equals(task.getProviderRunId()) && sameName) {
                     candidates.add(new RunningTaskMatch(activity, task));
                 }
             }

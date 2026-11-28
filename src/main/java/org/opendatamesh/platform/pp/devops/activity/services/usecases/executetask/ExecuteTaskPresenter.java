@@ -2,6 +2,6 @@ package org.opendatamesh.platform.pp.devops.activity.services.usecases.executeta
 
 import org.opendatamesh.platform.pp.devops.activity.entities.Task;
 
-interface ExecuteTaskPresenter {
+public interface ExecuteTaskPresenter {
     void presentTaskExecuted(Task task);
 }

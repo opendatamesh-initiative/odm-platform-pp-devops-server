@@ -136,7 +136,14 @@ odm:
       active: false
 ```
 
-DevOps does not call a Policy URL. With the flag on, an external service publishes the approval or rejection on Notification.
+With the flag on, an external service publishes the approval or rejection on Notification, and DevOps does not call a Policy URL.
+
+A Policy service at version 1 cannot publish decisions itself. To use one, also set its version to `1` and its address: DevOps then sends it each request and publishes its decision. Leave the version unset for any other Policy service.
+
+| Property | Purpose | Default |
+| --- | --- | --- |
+| `odm.product-plane.policy-service.version` | Set to `1` only for a Policy service V1, which DevOps then calls | not set |
+| `odm.product-plane.policy-service.address` | Base URL of the Policy service V1 | not set |
 
 ## Observer identity
 
@@ -185,7 +192,7 @@ DevOps polls a running full-control task until it ends. It does not poll an inst
 
 ## Secrets and parameters
 
-On execute, a secret for one executor arrives as a request header named `x-odm-<executorName>-executor-secret-<secretType>`. DevOps keeps the secret in memory for the configured lifetime, sends it only to that executor for that activity as `x-odm-<secretType>`, and drops it when the activity ends. Secrets are never stored, logged, returned, or put in events.
+On execute, the caller sends each secret as a request header that names the executor it belongs to (the exact header form is in the OpenAPI description of the execute operation). DevOps keeps the secret in memory for the configured lifetime, sends it only to that executor for that activity, and drops it when the activity ends. Secrets are never stored, logged, returned, or put in events.
 
 | Property | Purpose | Default |
 | --- | --- | --- |
