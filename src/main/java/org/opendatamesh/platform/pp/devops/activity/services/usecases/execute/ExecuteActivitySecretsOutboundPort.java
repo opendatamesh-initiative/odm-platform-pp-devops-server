@@ -6,4 +6,6 @@ import java.util.Set;
 
 interface ExecuteActivitySecretsOutboundPort {
     void storeExecutorSecrets(Activity activity, Set<String> executorNames);
+
+    void removeExecutorSecrets(String activityUuid);
 }

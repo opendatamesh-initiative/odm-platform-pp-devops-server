@@ -70,7 +70,7 @@ class AdvanceActivity implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        AdvanceWork work = advanceRunningActivity();
+        AdvanceWork work = transactionalPort.doInTransactionWithResults(ignored -> advanceRunningActivity(), null);
         if (work.outcome() == Outcome.CLOSED) {
             secretsPort.removeExecutorSecrets(work.activity());
         }
@@ -84,32 +84,30 @@ class AdvanceActivity implements UseCase {
     }
 
     private AdvanceWork advanceRunningActivity() {
-        return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findForUpdate(command.activityUuid());
-            List<Task> tasks = tasksInSortOrder(activity);
-            if (isTerminal(activity.getStatus())) {
-                return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
-            }
-            if (anyTaskFailed(tasks)) {
-                closeFailed(activity, tasks);
-                return new AdvanceWork(Outcome.CLOSED, activity);
-            }
-            if (anyTaskRunning(tasks)) {
-                return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
-            }
-            if (anyTaskCanceled(tasks)) {
-                closeCanceled(activity, tasks);
-                return new AdvanceWork(Outcome.CLOSED, activity);
-            }
-            if (allTasksSucceeded(tasks)) {
-                closeSucceeded(activity);
-                return new AdvanceWork(Outcome.CLOSED, activity);
-            }
-            if (activity.getStatus() == ExecutionStatus.RUNNING && anyTaskPending(tasks)) {
-                return requestNextTaskIfFullControl(activity, tasks);
-            }
+        Activity activity = persistencePort.findForUpdate(command.activityUuid());
+        List<Task> tasks = tasksInSortOrder(activity);
+        if (isTerminal(activity.getStatus())) {
             return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
-        }, null);
+        }
+        if (anyTaskFailed(tasks)) {
+            closeFailed(activity, tasks);
+            return new AdvanceWork(Outcome.CLOSED, activity);
+        }
+        if (anyTaskRunning(tasks)) {
+            return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
+        }
+        if (anyTaskCanceled(tasks)) {
+            closeCanceled(activity, tasks);
+            return new AdvanceWork(Outcome.CLOSED, activity);
+        }
+        if (allTasksSucceeded(tasks)) {
+            closeSucceeded(activity);
+            return new AdvanceWork(Outcome.CLOSED, activity);
+        }
+        if (activity.getStatus() == ExecutionStatus.RUNNING && anyTaskPending(tasks)) {
+            return requestNextTaskIfFullControl(activity, tasks);
+        }
+        return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);
     }
 
     private void closeFailed(Activity activity, List<Task> tasks) {
@@ -117,7 +115,8 @@ class AdvanceActivity implements UseCase {
         activity.setStatus(ExecutionStatus.FAILED);
         activity.setFinishedAt(now());
         persistencePort.save(activity);
-        notificationPort.emitActivityFailed(activity);
+        // Announced once the close is stored: a conflict that rolls it back must not have been announced.
+        transactionalPort.afterCommit(() -> notificationPort.emitActivityFailed(activity));
     }
 
     private void closeCanceled(Activity activity, List<Task> tasks) {
@@ -125,14 +124,16 @@ class AdvanceActivity implements UseCase {
         activity.setStatus(ExecutionStatus.CANCELED);
         activity.setFinishedAt(now());
         persistencePort.save(activity);
-        notificationPort.emitActivityCanceled(activity);
+        // Announced once the close is stored: a conflict that rolls it back must not have been announced.
+        transactionalPort.afterCommit(() -> notificationPort.emitActivityCanceled(activity));
     }
 
     private void closeSucceeded(Activity activity) {
         activity.setStatus(ExecutionStatus.SUCCEEDED);
         activity.setFinishedAt(now());
         persistencePort.save(activity);
-        notificationPort.emitActivitySucceeded(activity);
+        // Announced once the close is stored: a conflict that rolls it back must not have been announced.
+        transactionalPort.afterCommit(() -> notificationPort.emitActivitySucceeded(activity));
     }
 
     private static boolean isTerminal(ExecutionStatus status) {
@@ -182,8 +183,11 @@ class AdvanceActivity implements UseCase {
 
     private AdvanceWork requestNextTaskIfFullControl(Activity activity, List<Task> tasks) {
         Task pending = firstPendingTask(activity, tasks);
-        if (executorPort.findExecutionMode(pending.getExecutorName()) == ExecutionMode.FULL_CONTROL) {
-            notificationPort.emitTaskExecutionRequested(activity, pending);
+        ExecutionMode mode = executorPort.findExecutionMode(pending.getExecutorName());
+        // A task whose executor is no longer declared (mode null) is requested too: once approved,
+        // Execute Task fails it with the reason, and the activity closes instead of waiting forever.
+        if (mode != ExecutionMode.INSTRUMENTED) {
+            transactionalPort.afterCommit(() -> notificationPort.emitTaskExecutionRequested(activity, pending));
             return new AdvanceWork(Outcome.TASK_REQUESTED, activity);
         }
         return new AdvanceWork(Outcome.NOTHING_TO_DO, activity);

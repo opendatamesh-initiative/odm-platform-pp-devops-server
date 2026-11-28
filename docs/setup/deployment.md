@@ -79,7 +79,7 @@ Optional: `JAVA_OPTS` for JVM flags; `PROFILES_ACTIVE` to override the default `
 
 1. Provision **PostgreSQL** and choose a lowercase schema (default `odm_devops`). Flyway applies migrations on startup.
 2. Decide **Policy** on or off. If on, the external Policy service publishes decisions on Notification; set `odm.product-plane.policy-service.active=true`.
-3. Deploy **Notification**, point DevOps at it, and set **`server.baseUrl`** so Notification can reach `POST /api/v2/up/observer/notifications`.
+3. Deploy **Notification**, point DevOps at it, and set **`server.baseUrl`** to the address where Notification can reach DevOps to deliver events.
 4. Declare **executors** (`full-control` with an address, `instrumented` with or without one).
 5. Pull or build the **image**, inject config (`DB_*` and/or `SPRING_PROPS`), and expose port **8080** (or your `server.port`).
 6. Confirm the app is up: Swagger UI at `/swagger-ui.html`, OpenAPI at `/v3/api-docs`.

@@ -17,7 +17,10 @@ import org.opendatamesh.platform.pp.devops.utils.services.GenericMappedAndFilter
 import org.opendatamesh.platform.pp.devops.utils.services.TransactionHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.opendatamesh.platform.pp.devops.utils.entities.StoredTextLimits;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -66,9 +69,22 @@ public class ActivityServiceImpl
 
     @Override
     public Page<ActivityRes> findAllResourcesFiltered(Pageable pageable, ActivitySearchOptions filters) {
+        Pageable stable = withUniqueTiebreaker(pageable);
         return transactionHandler.runInTransaction(() ->
-                findAllFiltered(pageable, filters).map(activityMapper::toResWithoutTasks)
+                findAllFiltered(stable, filters).map(activityMapper::toResWithoutTasks)
         );
+    }
+
+    /**
+     * Pages are cut with LIMIT/OFFSET: rows that tie on the requested sort (every execution of an activity
+     * shares its sort order) would come back in any order, so a page could repeat or skip some. The uuid
+     * makes the order total.
+     */
+    private static Pageable withUniqueTiebreaker(Pageable pageable) {
+        if (pageable == null || pageable.isUnpaged() || pageable.getSort().getOrderFor("uuid") != null) {
+            return pageable;
+        }
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), pageable.getSort().and(Sort.by("uuid")));
     }
 
     @Override
@@ -136,7 +152,7 @@ public class ActivityServiceImpl
             if (task.getName() != null && task.getName().length() > 255) {
                 throw new BadRequestException("Task name cannot exceed 255 characters");
             }
-            if (task.getProviderRunId() != null && task.getProviderRunId().length() > 255) {
+            if (task.getProviderRunId() != null && task.getProviderRunId().length() > StoredTextLimits.PROVIDER_RUN_ID_MAX_CHARS) {
                 throw new BadRequestException("Provider run id cannot exceed 255 characters");
             }
             if (task.getExecutorName() != null && task.getExecutorName().length() > 255) {
@@ -162,11 +178,11 @@ public class ActivityServiceImpl
                     throw new BadRequestException("Log entry cannot be null");
                 }
                 log.setUuid(trimToNull(log.getUuid()));
-                log.setContent(trimToNull(log.getContent()));
+                log.setContent(trimToNull(StoredTextLimits.withoutNulCharacters(log.getContent())));
                 if (!StringUtils.hasText(log.getContent())) {
                     throw new BadRequestException("Log content is required");
                 }
-                if (log.getContent().length() > 1048576) {
+                if (log.getContent().length() > StoredTextLimits.CONTENT_MAX_CHARS) {
                     throw new BadRequestException("Log content cannot exceed 1048576 characters");
                 }
                 if (StringUtils.hasText(log.getUuid()) && !logUuids.add(log.getUuid())) {
@@ -180,11 +196,11 @@ public class ActivityServiceImpl
                     throw new BadRequestException("Result entry cannot be null");
                 }
                 result.setUuid(trimToNull(result.getUuid()));
-                result.setContent(trimToNull(result.getContent()));
+                result.setContent(trimToNull(StoredTextLimits.withoutNulCharacters(result.getContent())));
                 if (!StringUtils.hasText(result.getContent())) {
                     throw new BadRequestException("Result content is required");
                 }
-                if (result.getContent().length() > 1048576) {
+                if (result.getContent().length() > StoredTextLimits.CONTENT_MAX_CHARS) {
                     throw new BadRequestException("Result content cannot exceed 1048576 characters");
                 }
                 if (StringUtils.hasText(result.getUuid()) && !resultUuids.add(result.getUuid())) {
@@ -259,6 +275,8 @@ public class ActivityServiceImpl
 
         Activity persisted = activitiesRepository.findById(incoming.getUuid())
                 .orElseThrow(() -> new NotFoundException("Resource with id=" + incoming.getUuid() + " not found"));
+        // The resource carries no creation date: keep the stored one, or the merged entity (and the answer) has none.
+        incoming.setCreatedAt(persisted.getCreatedAt());
 
         Map<String, Task> existingTasksByUuid = indexTasks(persisted.getTasks());
         List<Task> reconciledTasks = new ArrayList<>();

@@ -35,6 +35,7 @@ public class ExecuteActivityFactory {
                 new ExecuteActivityExecutorOutboundPortImpl(executorServicesProperties),
                 new ExecuteActivitySecretsOutboundPortImpl(executorSecretsStore, headers),
                 new ExecuteActivityNotificationOutboundPortImpl(notificationClient, activityMapper),
+                new ExecuteActivityParametersOutboundPortImpl(),
                 transactionalOutboundPort
         );
     }

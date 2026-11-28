@@ -30,4 +30,14 @@ class ExecuteActivityPersistenceOutboundPortImpl implements ExecuteActivityPersi
     public Activity create(Activity activity) {
         return activityService.create(activity);
     }
+
+    @Override
+    public Activity findForUpdate(String uuid) {
+        return activityService.findOne(uuid);
+    }
+
+    @Override
+    public Activity save(Activity activity) {
+        return activityService.overwrite(activity.getUuid(), activity);
+    }
 }

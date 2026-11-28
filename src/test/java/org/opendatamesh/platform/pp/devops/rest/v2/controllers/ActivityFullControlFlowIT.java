@@ -189,14 +189,16 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
     /**
      * Feature: Approve an activity execution
      *
-     * Scenario: A duplicate approval changes nothing
-     *   Given a RUNNING activity
+     * Scenario: A duplicate approval changes no status and only asks again for the pending next task
+     *   Given a RUNNING activity whose first full-control task is PENDING
      *   When DevOps receives ACTIVITY_EXECUTION_APPROVED for it again
      *   Then the notification is processed successfully
-     *   And the activity and its tasks are unchanged and no event is emitted
+     *   And the activity and its tasks are unchanged
+     *   And the only event is ACTIVITY_TASK_EXECUTION_REQUESTED for the first task, so an advance that failed
+     *   after the first approval is completed by the repeat
      */
     @Test
-    public void whenActivityApprovedTwiceThenNotificationFailedAndUnchanged() {
+    public void whenActivityApprovedTwiceThenStatusesUnchangedAndNextTaskRequestedAgain() {
         // Given
         ActivityRes created = executeTasks("dpv-approve-twice", "prod", Map.of());
         postActivityApproved(created.getUuid());
@@ -208,7 +210,8 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
 
         // Then
         assertProcessingSucceeded(sequenceId);
-        assertThat(notifiedEvents()).isEmpty();
+        assertThat(notifiedEvents()).singleElement()
+                .isInstanceOf(EmittedEventActivityTaskExecutionRequestedRes.class);
         ActivityRes after = getActivity(created.getUuid());
         assertThat(after.getStatus()).isEqualTo(running.getStatus());
         assertThat(after.getStartedAt()).isEqualTo(running.getStartedAt());
@@ -653,6 +656,7 @@ public class ActivityFullControlFlowIT extends DevOpsApplicationIT {
     private static ActivityRes namedActivity(String dataProductVersionUuid, String name) {
         ActivityRes activity = new ActivityRes();
         activity.setDataProductVersionUuid(dataProductVersionUuid);
+        activity.setDataProductFqn("urn:dpds:example:dataproducts:sample:1");
         activity.setDataProductVersionNumber("1.0.0");
         activity.setName(name);
         activity.setSortOrder(1);

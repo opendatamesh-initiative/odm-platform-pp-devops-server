@@ -287,6 +287,12 @@ class BaseRestUtils implements RestUtils {
     }
 
 
+    @Override
+    public <I> void postIgnoringResponseBody(String url, List<HttpHeader> httpHeaders, I resource) throws ClientException {
+        // String accepts any content type, so a 2xx answer is never parsed as JSON.
+        rest.exchange(url, HttpMethod.POST, new HttpEntity<>(resource, httpHeaders), String.class);
+    }
+
     /**
      * Adds pagination query parameters to the provided {@link UriComponents} based on the {@link Pageable} object.
      *

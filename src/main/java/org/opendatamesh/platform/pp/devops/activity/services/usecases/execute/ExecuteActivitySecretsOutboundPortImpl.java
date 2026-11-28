@@ -30,6 +30,11 @@ class ExecuteActivitySecretsOutboundPortImpl implements ExecuteActivitySecretsOu
         }
     }
 
+    @Override
+    public void removeExecutorSecrets(String activityUuid) {
+        executorSecretsStore.removeAll(activityUuid);
+    }
+
     private Map<String, String> rewriteSecretHeaders(String executorName) {
         String prefix = ("x-odm-" + executorName + "-executor-secret-").toLowerCase(Locale.ROOT);
         Map<String, String> rewritten = new LinkedHashMap<>();

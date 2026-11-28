@@ -227,27 +227,36 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
     }
 
     /**
-     * Feature: Request an instrumented task
+     * Feature: Execute an activity
      *
-     * Scenario: A task name that matches two tasks is refused
-     *   Given the activity is RUNNING and two tasks are named "deploy"
-     *   When the CLI requests "deploy"
+     * Scenario: Two tasks with the same name are refused at execute
+     *   Given an activity whose two tasks are both named "deploy"
+     *   When the owner executes it
      *   Then the response is 400
-     *   And the message is "Task deploy matches more than one task in activity <uuid>"
+     *   And the message is "Task name deploy is used by more than one task"
      */
     @Test
     public void whenTaskNameDuplicatedThenBadRequest() {
         // Given
-        ActivityRes created = executeTasks("dpv-duplicate", List.of(cliTask("deploy"), cliTask("deploy")));
+        ActivityRes activity = new ActivityRes();
+        activity.setDataProductVersionUuid("dpv-duplicate");
+        activity.setDataProductFqn("dpv-duplicate");
+        activity.setDataProductVersionNumber("1.0.0");
+        activity.setName("prod");
+        activity.setSortOrder(1);
+        activity.setTasks(List.of(cliTask("deploy"), cliTask("deploy")));
+        ActivityExecuteCommandRes command = new ActivityExecuteCommandRes();
+        command.setActivity(activity);
         // When
-        postActivityApproved(created.getUuid());
-
-        ResponseEntity<ErrorRes> response = requestExecutionError(created, "deploy", "run-1");
+        ResponseEntity<ErrorRes> response = rest.postForEntity(
+                apiUrl(RoutesV2.ACTIVITIES_EXECUTE),
+                new HttpEntity<>(command, jsonHeaders()),
+                ErrorRes.class
+        );
 
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody().getMessage())
-                .isEqualTo("Task deploy matches more than one task in activity " + created.getUuid());
+        assertThat(response.getBody().getMessage()).isEqualTo("Task name deploy is used by more than one task");
         assertCliExecutorNotOpened();
     }
 
@@ -430,27 +439,31 @@ public class ActivityInstrumentedFlowIT extends DevOpsApplicationIT {
     /**
      * Feature: Report an instrumented task
      *
-     * Scenario: A second terminal status is refused
-     *   Given the instrumented task is already SUCCEEDED
-     *   When the CLI records SUCCEEDED again
+     * Scenario: The same terminal status sent again is accepted, a different one is refused
+     *   Given the instrumented task is already SUCCEEDED and the activity is still open
+     *   When the CLI records SUCCEEDED again (a retry after an error)
+     *   Then the response is 200
+     *   When the CLI records FAILED instead
      *   Then the response is 400
      *   And the message is "Task <name> is not RUNNING"
      */
     @Test
-    public void whenSecondTerminalStatusThenBadRequest() {
+    public void whenSecondTerminalStatusThenSameIsAcceptedAndDifferentRefused() {
         // Given
         ActivityRes created = executeTasks("dpv-second-status", List.of(cliTask("deploy"), cliTask("publish")));
-        // When
         postActivityApproved(created.getUuid());
         requestExecution(created, "deploy", "run-1");
         postTaskApproved(created.getUuid(), taskByName(created, "deploy").getUuid());
         postStatus(created, "deploy", ExecutionStatus.SUCCEEDED);
 
-        ResponseEntity<ErrorRes> response = postStatusError(created, "deploy", ExecutionStatus.SUCCEEDED);
+        // When
+        ResponseEntity<ActivityTaskCommandResultRes> repeated = postStatus(created, "deploy", ExecutionStatus.SUCCEEDED);
+        ResponseEntity<ErrorRes> different = postStatusError(created, "deploy", ExecutionStatus.FAILED);
 
         // Then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody().getMessage()).isEqualTo("Task deploy" + NOT_RUNNING);
+        assertThat(repeated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(different.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(different.getBody().getMessage()).isEqualTo("Task deploy" + NOT_RUNNING);
         assertCliExecutorNotOpened();
     }
 

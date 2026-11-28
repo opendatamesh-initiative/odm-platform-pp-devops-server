@@ -25,7 +25,7 @@ import java.util.Map;
 class ExecuteTaskPipelineParametersOutboundPortImpl implements ExecuteTaskPipelineParametersOutboundPort {
 
     private static final Logger logger = LoggerFactory.getLogger(ExecuteTaskPipelineParametersOutboundPortImpl.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = PipelineParameterPlaceholders.RESULT_READER;
 
     private final ActivityService activityService;
     private final TransactionalOutboundPort transactionalPort;

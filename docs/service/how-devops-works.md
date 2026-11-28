@@ -229,19 +229,19 @@ For example, an activity can provision storage with a pipeline DevOps launches (
 
 - DevOps checks a running pipeline at a fixed interval, every 30 seconds by default.
 - It stops checking after the lifetime of the executor credentials, one hour by default (so 120 checks with the defaults). A pipeline still running at that point is recorded as failed.
-- Logs are collected once, when the run has ended.
+- Logs are collected once, when the run has ended. A log longer than DevOps can store (about one million characters) is kept from its end, with a note at the top saying it was shortened; the outcome is always recorded.
 - Both values can be changed in the [configuration](../setup/configuration.md#full-control-polling).
 
 **Instrumented**
 
-- The ODM CLI refers to the execution by data product, version, and activity name, and to its task by task name. Task names must therefore be unique within an activity.
+- The ODM CLI refers to the execution by data product, version, and activity name, and to its task by task name. Task names must therefore be unique within an activity: a request with two tasks of the same name is refused, and so is a request without the data product's fully qualified name.
 - The CLI can only ask to run the next task in order, and only when no other task of the activity is running.
-- Logs and results are accepted only while the task is running. The final status must be the last report: after it, the task no longer accepts logs or results.
+- Logs and results are accepted only while the task is running. The final status must be the last report: after it, the task no longer accepts logs or results. Sending the same final status again, while the activity is still open, is accepted: a CLI that retries after an error does not get stuck.
 - A running task can be addressed in one of three ways, never mixed: by the pipeline run id, by the data product, version, and activity name, or (for results only) by the activity. With the run id, the task name is optional and only narrows the match. Only a running task can be found by its run id.
 - If no running task has that run id, DevOps answers that it was not found. A full-control pipeline that uploads results right after it starts may reach DevOps before the run id is stored, so it should retry shortly. DevOps does not wait.
 - If more than one running task has the same run id, DevOps refuses the request and names the matches, instead of choosing one.
 - An instrumented task needs no executor address, no pipeline location, and no credentials, because DevOps does not call anything for it.
-- Every task that DevOps returns or publishes carries `executionMode` (`FULL_CONTROL` or `INSTRUMENTED`), taken from the declaration of its executor when the task is read or the message is built. It is read-only, and it is `null` when the executor is no longer declared. This is how a client tells an instrumented task waiting for its pipeline from a full-control task waiting for approval.
+- Every task that DevOps returns or publishes shows its execution mode (full control or instrumented), taken from the declaration of its executor when the task is read or the message is built. It is read-only, and it is empty when the executor is no longer declared. This is how a client tells an instrumented task waiting for its pipeline from a full-control task waiting for approval.
 
 ---
 
@@ -399,6 +399,7 @@ When DevOps fails a task for one of these reasons, it writes the reason in the t
 | The executor does not answer the start in time | The task fails; the pipeline may have started in the tool and is not tracked |
 | DevOps cannot get the status of a running pipeline | The task fails after the last attempt |
 | The executor returns no status, or an unknown one | The task fails at once |
+| The executor of the task is no longer declared in the configuration | The task fails when its turn comes |
 | A pipeline is still running when DevOps stops checking | The task fails |
 | An instrumented pipeline reports failed or canceled | The activity fails or is canceled |
 
@@ -406,7 +407,8 @@ When DevOps fails a task for one of these reasons, it writes the reason in the t
 
 - **Canceling an activity that has already ended** is refused, and the answer says how it ended.
 - **Canceling at the same moment as another change** (for example, while the activity is being approved) can be refused as a conflict. Cancel again.
-- **If DevOps cannot reach the executor to stop a run,** it tries a few times, then reports an error. Tasks that had not started stay canceled. Cancel again to retry stopping the run.
+- **If DevOps cannot reach the executor to stop a run,** it tries a few times, then reports an error. Tasks that had not started stay canceled. Cancel again to retry stopping the run. When the executor answers that it does not know the run, DevOps checks the run's status before treating the run as ended.
+- **If DevOps is no longer following a running task** (for example after a restart), cancel asks the executor to stop the run and then closes the task itself, with the reason in its logs: canceled when the executor accepted the stop, failed when the run had already ended and its real outcome is unknown.
 - **If a pipeline has just been started** and the tool has not identified the run yet, DevOps waits up to five minutes before giving up with an error. Cancel again later.
 - **Cancel waits for the end.** The cancel request returns only when the activity has ended. With a slow pipeline, this can take as long as the pipeline needs to stop.
 
@@ -414,7 +416,7 @@ When DevOps fails a task for one of these reasons, it writes the reason in the t
 
 ## 8. Known limitations
 
-- **Restarting DevOps during a run.** A full-control task that was running stays `RUNNING`, because DevOps does not resume following it, and the credentials held in memory are lost. Automatic recovery after a restart is not supported yet.
+- **Restarting DevOps during a run.** A full-control task that was running stays `RUNNING`, because DevOps does not resume following it, and the credentials held in memory are lost. Automatic recovery after a restart is not supported yet; cancel the activity to close it.
 - **A silent instrumented pipeline.** If an instrumented pipeline never asks to run its task, or never reports a final status, the activity stays open. A cancel waits for that pipeline too.
 - **Credential lifetime.** Credentials expire after their lifetime (one hour by default), counted from the execution request. A task that starts later runs without them.
 - **Run ids are not unique.** Different pipeline tools can issue the same run id. DevOps only matches running tasks and refuses an id shared by several of them. A clash in the short time before a full-control task has its run id stored is accepted; sending the task name narrows the match.

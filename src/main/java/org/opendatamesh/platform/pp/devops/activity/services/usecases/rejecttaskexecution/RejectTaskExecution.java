@@ -34,11 +34,14 @@ class RejectTaskExecution implements UseCase {
     @Override
     public void execute() {
         validateCommand();
-        Task rejected = rejectPendingTask();
-        if (rejected == null) {
+        Rejection rejection = transactionalPort.doInTransactionWithResults(ignored -> rejectPendingTask(), null);
+        if (rejection == null) {
             return;
         }
-        presenter.presentTaskExecutionRejected(rejected);
+        if (rejection.rejectedNow()) {
+            presenter.presentTaskExecutionRejected(rejection.task());
+        }
+        // Also on a repeated rejection: if the first advance failed, this one closes the activity.
         advancePort.advanceActivity(command.activityUuid());
     }
 
@@ -51,19 +54,26 @@ class RejectTaskExecution implements UseCase {
         }
     }
 
-    private Task rejectPendingTask() {
-        return transactionalPort.doInTransactionWithResults(ignored -> {
-            Activity activity = persistencePort.findForUpdate(command.activityUuid());
-            Task task = findTask(activity, command.taskUuid());
-            if (activity.getStatus() != ExecutionStatus.RUNNING || task.getStatus() != ExecutionStatus.PENDING) {
-                return null;
-            }
-            task.setStatus(ExecutionStatus.FAILED);
-            task.setFinishedAt(now());
-            persistencePort.save(activity);
-            task.getActivity().getUuid();
-            return task;
-        }, null);
+    private Rejection rejectPendingTask() {
+        Activity activity = persistencePort.findForUpdate(command.activityUuid());
+        Task task = findTask(activity, command.taskUuid());
+        if (activity.getStatus() != ExecutionStatus.RUNNING) {
+            return null;
+        }
+        if (task.getStatus() == ExecutionStatus.FAILED) {
+            return new Rejection(task, false);
+        }
+        if (task.getStatus() != ExecutionStatus.PENDING) {
+            return null;
+        }
+        task.setStatus(ExecutionStatus.FAILED);
+        task.setFinishedAt(now());
+        persistencePort.save(activity);
+        task.getActivity().getUuid();
+        return new Rejection(task, true);
+    }
+
+    private record Rejection(Task task, boolean rejectedNow) {
     }
 
     private Task findTask(Activity activity, String taskUuid) {

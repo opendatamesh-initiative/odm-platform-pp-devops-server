@@ -4,13 +4,13 @@ import org.opendatamesh.platform.pp.devops.activity.services.core.ActivityServic
 import org.opendatamesh.platform.pp.devops.activity.services.usecases.advance.AdvanceActivityFactory;
 import org.opendatamesh.platform.pp.devops.client.executor.ExecutorClientFactory;
 import org.opendatamesh.platform.pp.devops.executor.ExecutorServicesProperties;
+import org.opendatamesh.platform.pp.devops.executor.RunFollowRegistry;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.TaskMapper;
 import org.opendatamesh.platform.pp.devops.utils.services.EntityInitAndDetachService;
 import org.opendatamesh.platform.pp.devops.utils.usecases.TransactionalOutboundPort;
 import org.opendatamesh.platform.pp.devops.utils.usecases.UseCase;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.PlatformTransactionManager;
 
 @Component
 public class CancelActivityFactory {
@@ -26,7 +26,7 @@ public class CancelActivityFactory {
     @Autowired
     private ExecutorServicesProperties executorServicesProperties;
     @Autowired
-    private PlatformTransactionManager transactionManager;
+    private RunFollowRegistry runFollowRegistry;
     @Autowired
     private EntityInitAndDetachService entityInitAndDetachService;
     @Autowired
@@ -36,9 +36,9 @@ public class CancelActivityFactory {
         return new CancelActivity(
                 command,
                 presenter,
-                new CancelActivityPersistenceOutboundPortImpl(activityService, transactionManager, entityInitAndDetachService),
+                new CancelActivityPersistenceOutboundPortImpl(activityService, entityInitAndDetachService),
                 new CancelActivityAdvanceActivityOutboundPortImpl(advanceActivityFactory),
-                new CancelActivityExecutorOutboundPortImpl(executorClientFactory, executorServicesProperties, taskMapper),
+                new CancelActivityExecutorOutboundPortImpl(executorClientFactory, executorServicesProperties, taskMapper, runFollowRegistry),
                 new CancelActivityPollingOutboundPortImpl(executorServicesProperties),
                 transactionalOutboundPort
         );

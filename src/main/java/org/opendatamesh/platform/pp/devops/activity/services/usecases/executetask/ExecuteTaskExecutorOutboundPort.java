@@ -9,7 +9,14 @@ import java.util.Map;
 import java.util.Optional;
 
 interface ExecuteTaskExecutorOutboundPort {
+    /** The execution mode of a declared executor, or {@code null} when the executor is no longer declared. */
     ExecutionMode findExecutionMode(String executorName);
+
+    /** Records that this instance follows the run of the task until its outcome is stored. */
+    void followStarted(String taskUuid);
+
+    /** Records that this instance no longer follows the run of the task. */
+    void followEnded(String taskUuid);
 
     String startRun(Task task, Map<String, String> resolvedPipelineParameters);
 

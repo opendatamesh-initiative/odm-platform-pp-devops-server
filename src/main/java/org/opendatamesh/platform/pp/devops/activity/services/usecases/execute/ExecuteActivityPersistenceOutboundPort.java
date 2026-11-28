@@ -10,4 +10,8 @@ interface ExecuteActivityPersistenceOutboundPort {
     List<Activity> findActivities(String dataProductVersionUuid, String activityName, Set<ExecutionStatus> statuses);
 
     Activity create(Activity activity);
+
+    Activity findForUpdate(String uuid);
+
+    Activity save(Activity activity);
 }

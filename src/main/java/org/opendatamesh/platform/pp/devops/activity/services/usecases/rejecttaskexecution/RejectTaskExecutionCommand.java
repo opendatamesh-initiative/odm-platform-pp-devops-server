@@ -1,4 +1,4 @@
 package org.opendatamesh.platform.pp.devops.activity.services.usecases.rejecttaskexecution;
 
-record RejectTaskExecutionCommand(String activityUuid, String taskUuid) {
+public record RejectTaskExecutionCommand(String activityUuid, String taskUuid) {
 }

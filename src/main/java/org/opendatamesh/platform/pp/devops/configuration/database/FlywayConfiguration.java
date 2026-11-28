@@ -1,6 +1,7 @@
 package org.opendatamesh.platform.pp.devops.configuration.database;
 
 import org.flywaydb.core.Flyway;
+import org.springframework.boot.autoconfigure.orm.jpa.JpaProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,11 +24,19 @@ public class FlywayConfiguration {
     @Autowired
     private DataSource dataSource;
 
-    @Value("${spring.jpa.properties.hibernate.default_schema}")
-    private String defaultSchema;
+    @Autowired
+    private JpaProperties jpaProperties;
+
+    @Value("${spring.flyway.baseline-on-migrate:false}")
+    private boolean baselineOnMigrate;
 
     @Bean
     public Flyway flyway() {
+        // The schema Hibernate uses, read from the same place Hibernate reads it, so both always agree.
+        String defaultSchema = jpaProperties.getProperties().get("hibernate.default_schema");
+        if (defaultSchema == null || defaultSchema.isBlank()) {
+            throw new IllegalStateException("spring.jpa.properties.hibernate.default_schema is required.");
+        }
         logger.info("Initializing Flyway with schema: {}", defaultSchema);
         if (!defaultSchema.toLowerCase().equals(defaultSchema)) {
             throw new IllegalStateException("Default schema must contain lower cases only.");
@@ -36,6 +45,7 @@ public class FlywayConfiguration {
         Flyway flyway = Flyway.configure()
                 .dataSource(dataSource)
                 .schemas(defaultSchema)
+                .baselineOnMigrate(baselineOnMigrate)
                 .locations(DB_MIGRATION_VENDOR.replace(VENDOR_PLACEHOLDER, readVendor()))
                 .load();
         flyway.migrate();

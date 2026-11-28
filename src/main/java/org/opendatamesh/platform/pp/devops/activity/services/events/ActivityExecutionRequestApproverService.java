@@ -1,4 +1,4 @@
-package org.opendatamesh.platform.pp.devops.activity.services.usecases.approveexecutionrequest;
+package org.opendatamesh.platform.pp.devops.activity.services.events;
 
 import org.opendatamesh.platform.pp.devops.client.notification.NotificationClient;
 import org.opendatamesh.platform.pp.devops.rest.v2.resources.activity.ActivityRes;

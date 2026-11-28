@@ -26,4 +26,10 @@ public interface RestUtils {
 
     <I, O> O genericPost(String url, List<HttpHeader> httpHeaders, I resource, Class<O> clazz) throws ClientException, ClientResourceMappingException;
 
+    /**
+     * POSTs the resource and ignores the answer's body: any 2xx is a success, whatever its content type.
+     * An error status still raises a {@link ClientException}.
+     */
+    <I> void postIgnoringResponseBody(String url, List<HttpHeader> httpHeaders, I resource) throws ClientException;
+
 }

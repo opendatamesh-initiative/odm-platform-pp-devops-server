@@ -32,6 +32,8 @@ class RecordTaskLogs implements UseCase {
     private String dataProductVersionNumber;
     private String activityName;
     private String taskName;
+    /** The task matched by provider run id: it is used as is, never looked up again by name. */
+    private Task taskMatchedByRunId;
     private List<TaskLog> logs;
 
     RecordTaskLogs(RecordTaskLogsCommand command,
@@ -104,7 +106,8 @@ class RecordTaskLogs implements UseCase {
     }
 
     private void requireInstrumented(Task task) {
-        if (executorPort.findExecutionMode(task.getExecutorName()) != ExecutionMode.INSTRUMENTED) {
+        // A task whose executor is no longer declared is accepted: only its pipeline can still report on it.
+        if (executorPort.findExecutionMode(task.getExecutorName()) == ExecutionMode.FULL_CONTROL) {
             throw new BadRequestException("Task " + taskName + " is not instrumented");
         }
     }
@@ -136,6 +139,9 @@ class RecordTaskLogs implements UseCase {
     }
 
     private Task resolveTask(Activity activity) {
+        if (taskMatchedByRunId != null) {
+            return taskMatchedByRunId;
+        }
         List<Task> matches = new ArrayList<>();
         if (activity.getTasks() != null) {
             for (Task task : activity.getTasks()) {
@@ -189,6 +195,7 @@ class RecordTaskLogs implements UseCase {
         ambiguousRunId(candidates);
         RunningTaskMatch match = candidates.get(0);
         taskName = match.task().getName();
+        taskMatchedByRunId = match.task();
         return match.activity();
     }
 

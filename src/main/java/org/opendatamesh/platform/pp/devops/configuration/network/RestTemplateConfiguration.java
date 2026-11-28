@@ -18,6 +18,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.util.Arrays;
@@ -28,7 +29,11 @@ import java.util.concurrent.TimeUnit;
 https://springframework.guru/using-resttemplate-with-apaches-httpclient/
  */
 @Configuration
+@EnableScheduling
 public class RestTemplateConfiguration {
+
+    static final int MAX_CONNECTIONS = 200;
+    static final int MAX_CONNECTIONS_PER_ROUTE = 50;
 
     @Bean
     public PoolingHttpClientConnectionManager poolingConnectionManager() {
@@ -40,10 +45,10 @@ public class RestTemplateConfiguration {
                 .build();
 
         PoolingHttpClientConnectionManager poolingConnectionManager = new PoolingHttpClientConnectionManager();
-        // set a total amount of connections across all HTTP routes
-        poolingConnectionManager.setMaxTotal(5);
-        // set a maximum amount of connections for each HTTP route in pool
-        poolingConnectionManager.setDefaultMaxPerRoute(2);
+        // One pool serves Notification, every executor and Policy. Each running full-control task can have a
+        // call open to its executor (status, logs), so the pool must not be what limits concurrent tasks.
+        poolingConnectionManager.setMaxTotal(MAX_CONNECTIONS);
+        poolingConnectionManager.setDefaultMaxPerRoute(MAX_CONNECTIONS_PER_ROUTE);
         // set default connection configuration
         poolingConnectionManager.setDefaultConnectionConfig(connectionConfig);
         return poolingConnectionManager;
@@ -83,8 +88,9 @@ public class RestTemplateConfiguration {
                 .orElse(TimeValue.ofSeconds(20));
     }
 
-    /* Furthermore, we want to configure a connection monitor that runs every 20 seconds
+    /* Furthermore, we want to configure a connection monitor that runs every 60 seconds
      * and closes outdated connections as well as long waiting connections.
+     * It runs because this configuration enables scheduling.
      */
     @Bean
     public Runnable idleConnectionMonitor(PoolingHttpClientConnectionManager pool) {
